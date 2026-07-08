@@ -1,0 +1,70 @@
+www.java1234.com 网站简介
+
+说明：本文档为 RAG 功能测试资料，不代表真实网站的当前信息。
+
+www.java1234.com 是一个面向 Java 学习者的技术内容示例网站。
+
+网站主要面向以下用户：
+
+1. Java 初学者
+2. Java 后端开发工程师
+3. Spring Boot 学习者
+4. 数据库开发人员
+5. 希望学习人工智能应用开发的 Java 程序员
+
+网站内容分类包括：
+
+Java 基础
+Java Web
+Spring Framework
+Spring Boot
+MyBatis
+MySQL
+Redis
+微服务
+Docker
+Linux
+人工智能应用开发
+
+网站的学习资料以示例代码、技术文章、项目案例和问题排查为主。
+
+对于 Java 初学者，建议按照以下顺序学习：
+
+Java 基础
+面向对象
+集合
+异常
+多线程
+MySQL
+MyBatis
+Spring Boot
+Redis
+微服务
+
+网站设置了一个名为“Java AI 实战”的测试栏目。
+
+该栏目主要介绍以下内容：
+
+Spring AI
+ChatClient
+Prompt Template
+Chat Memory
+Tool Calling
+Embedding
+Vector Store
+RAG
+文档解析
+向量检索
+
+网站测试栏目编号为：JAVA1234-AI-0088。
+
+网站内部测试口令为：J1234-RAG-TXT。
+
+本文件的最后更新时间为 2026年7月。
+
+可以使用以下问题测试向量检索：
+
+www.java1234.com 主要面向哪些用户？
+网站有哪些人工智能相关内容？
+Java1234 的 AI 栏目编号是什么？
+J1234-RAG-TXT 保存在哪个文件中？

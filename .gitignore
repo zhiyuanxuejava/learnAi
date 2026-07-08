@@ -1,0 +1,19 @@
+config/*.properties
+
+# Build output
+target/
+
+# IDE files
+.idea/
+*.iml
+
+# OS / editor temp files
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+
+# Runtime logs
+logs/
+*.log

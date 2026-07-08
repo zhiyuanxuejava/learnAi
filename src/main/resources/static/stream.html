@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Stream Demo</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #172033;
+      background: #eef2f7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+
+    main {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      gap: 18px;
+      width: min(1180px, calc(100% - 48px));
+      height: 100vh;
+      margin: 0 auto;
+      padding: 28px 0;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 750;
+      line-height: 1.25;
+    }
+
+    .status {
+      min-width: 92px;
+      padding: 6px 10px;
+      border: 1px solid #c8d3e2;
+      border-radius: 999px;
+      color: #475569;
+      background: #ffffff;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 150px 140px auto auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input,
+    select {
+      width: 100%;
+      min-width: 0;
+      height: 46px;
+      padding: 0 14px;
+      border: 1px solid #bfcbda;
+      border-radius: 8px;
+      outline: none;
+      font-size: 15px;
+      background: #ffffff;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+    }
+
+    button {
+      min-width: 76px;
+      height: 46px;
+      padding: 0 16px;
+      border: 0;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    button[type="submit"] {
+      color: #ffffff;
+      background: #2563eb;
+    }
+
+    button[type="button"] {
+      color: #334155;
+      background: #dbe4ef;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.62;
+    }
+
+    .answer-shell {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-height: 0;
+      border: 1px solid #cbd7e6;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #ffffff;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+    }
+
+    .answer-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 44px;
+      padding: 0 18px;
+      border-bottom: 1px solid #e2e8f0;
+      color: #64748b;
+      background: #f8fafc;
+      font-size: 13px;
+    }
+
+    .thinking-panel {
+      display: none;
+      margin: 0 0 18px;
+      border: 1px solid #d7e0ec;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .thinking-panel.has-content {
+      display: block;
+    }
+
+    .thinking-panel summary {
+      padding: 10px 12px;
+      color: #475569;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 650;
+      user-select: none;
+    }
+
+    #thinking {
+      max-height: 220px;
+      padding: 0 12px 12px;
+      overflow: auto;
+      color: #475569;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    #answer {
+      min-height: 0;
+      padding: 24px 28px 36px;
+      overflow: auto;
+      line-height: 1.75;
+      font-size: 16px;
+    }
+
+    #finalAnswer:empty::before {
+      content: "回答会显示在这里";
+      color: #94a3b8;
+    }
+
+    .markdown-body h1,
+    .markdown-body h2,
+    .markdown-body h3,
+    .markdown-body h4,
+    .markdown-body h5,
+    .markdown-body h6 {
+      margin: 22px 0 10px;
+      line-height: 1.35;
+      color: #111827;
+    }
+
+    .markdown-body h1 {
+      font-size: 24px;
+    }
+
+    .markdown-body h2 {
+      font-size: 21px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .markdown-body h3 {
+      font-size: 18px;
+    }
+
+    .markdown-body p {
+      margin: 0 0 14px;
+    }
+
+    .markdown-body strong {
+      font-weight: 760;
+      color: #0f172a;
+    }
+
+    .markdown-body em {
+      color: #334155;
+      font-style: italic;
+    }
+
+    .markdown-body blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid #2563eb;
+      color: #334155;
+      background: #eff6ff;
+    }
+
+    .markdown-body ul,
+    .markdown-body ol {
+      margin: 10px 0 16px 24px;
+      padding: 0;
+    }
+
+    .markdown-body li {
+      margin: 6px 0;
+      padding-left: 4px;
+    }
+
+    .markdown-body hr {
+      height: 1px;
+      margin: 24px 0;
+      border: 0;
+      background: #e2e8f0;
+    }
+
+    .markdown-body .table-scroll {
+      width: 100%;
+      margin: 16px 0 20px;
+      overflow-x: auto;
+      border: 1px solid #d7e0ec;
+      border-radius: 8px;
+    }
+
+    .markdown-body table {
+      width: 100%;
+      min-width: 760px;
+      border-collapse: collapse;
+      background: #ffffff;
+      font-size: 14px;
+    }
+
+    .markdown-body th,
+    .markdown-body td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      border-right: 1px solid #e2e8f0;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .markdown-body th:last-child,
+    .markdown-body td:last-child {
+      border-right: 0;
+    }
+
+    .markdown-body th {
+      color: #0f172a;
+      background: #f1f5f9;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+
+    .markdown-body tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .markdown-body code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      color: #0f172a;
+      background: #e2e8f0;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .markdown-body .math-block {
+      display: block;
+      margin: 14px 0 18px;
+      padding: 12px 14px;
+      overflow-x: auto;
+      border: 1px solid #d7e0ec;
+      border-radius: 8px;
+      color: #0f172a;
+      background: #f8fafc;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .markdown-body .math-inline {
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: #0f172a;
+      background: #eef2f7;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.92em;
+      white-space: nowrap;
+    }
+
+    .markdown-body pre {
+      margin: 14px 0;
+      padding: 14px;
+      overflow: auto;
+      border-radius: 8px;
+      color: #e5edf7;
+      background: #111827;
+    }
+
+    .markdown-body pre code {
+      padding: 0;
+      color: inherit;
+      background: transparent;
+      font-size: 14px;
+    }
+
+    @media (max-width: 720px) {
+      body {
+        overflow: auto;
+      }
+
+      main {
+        width: calc(100% - 24px);
+        min-height: 100vh;
+        height: auto;
+        padding: 18px 0;
+      }
+
+      header,
+      form {
+        grid-template-columns: 1fr;
+      }
+
+      form {
+        display: grid;
+      }
+
+      button {
+        width: 100%;
+      }
+
+      .answer-shell {
+        min-height: 520px;
+      }
+
+      #answer {
+        padding: 18px;
+        font-size: 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div id="status" class="status">待发送</div>
+  </header>
+
+  <form id="questionForm">
+    <input id="question" name="question" value="" autocomplete="off" aria-label="问题">
+    <input id="convId" name="convId" value="1" autocomplete="off" aria-label="会话 ID">
+    <select id="provider" name="provider" aria-label="AI 供应商">
+      <option value="openai">OpenAI</option>
+      <option value="ollama" selected>Ollama</option>
+    </select>
+    <button id="submitButton" type="submit">发送</button>
+    <button id="stopButton" type="button" disabled>停止</button>
+  </form>
+
+  <section class="answer-shell" aria-label="AI 回答">
+    <div class="answer-toolbar">
+      <span>Markdown 渲染</span>
+      <span id="counter">0 字</span>
+    </div>
+    <article id="answer" class="markdown-body" aria-live="polite">
+      <details id="thinkingPanel" class="thinking-panel">
+        <summary>思考过程</summary>
+        <div id="thinking" class="markdown-body"></div>
+      </details>
+      <div id="finalAnswer"></div>
+    </article>
+  </section>
+</main>
+
+<script>
+  const form = document.querySelector("#questionForm");
+  const questionInput = document.querySelector("#question");
+  const convIdInput = document.querySelector("#convId");
+  const providerSelect = document.querySelector("#provider");
+  const answer = document.querySelector("#answer");
+  const thinkingPanel = document.querySelector("#thinkingPanel");
+  const thinking = document.querySelector("#thinking");
+  const finalAnswer = document.querySelector("#finalAnswer");
+  const submitButton = document.querySelector("#submitButton");
+  const stopButton = document.querySelector("#stopButton");
+  const statusText = document.querySelector("#status");
+  const counter = document.querySelector("#counter");
+  const params = new URLSearchParams(window.location.search);
+  let source = null;
+  let markdownBuffer = "";
+  const savedConvId = localStorage.getItem("ai-stream-conv-id");
+
+  if (savedConvId) {
+    convIdInput.value = savedConvId;
+  }
+
+  convIdInput.addEventListener("change", () => {
+    localStorage.setItem("ai-stream-conv-id", normalizeConvId());
+  });
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    startStream();
+  });
+
+  stopButton.addEventListener("click", () => {
+    closeStream("已停止");
+  });
+
+  if (params.has("demo")) {
+    markdownBuffer = [
+      "<think>",
+      "用户在问 RAG，我需要先解释概念，再从 Java 后端落地角度展开。",
+      "</think>",
+      "",
+      "##三、RAG系统的主要组成",
+      "",
+      "###1.文档采集",
+      "",
+      "把企业已有资料接入系统，比如：",
+      "",
+      "-PDF -Word -Markdown -HTML -数据库表 -接口文档 -FAQ -代码仓库 -企业知识库",
+      "",
+      "**关键点**：后端需要处理文件解析、清洗文本、存储原文和元数据。",
+      "",
+      "| 需求维度 | 推荐方案 | 原因 |",
+      "|---|---|---|",
+      "| 海量数据+高性能 | Milvus | 架构支持分布式扩展，SDK成熟 |",
+      "| 已有搜索系统扩展 | Elasticsearch | 无需新组件，利用既有技术栈 |",
+      "",
+      "*Milvus: *特点：目前企业级应用的首选，支持亿级数据量。 *Java支持：提供成熟的JavaSDK。 *适用场景：大规模向量检索。",
+      "",
+      "*作者：BrianGoetz等人*",
+      "",
+      "中级$\\rightarrow$高级",
+      "",
+      "$$\\text{AI应用}=\\text{LLM(大脑)}+\\text{RAG(知识库)}+\\text{ToolCalling(手脚)}+\\text{SpringBoot(骨架/工程化)}$$",
+      "",
+      "公式：$$\\text{基础良率}=\\frac{\\text{最终合格产品数}}{\\text{投入生产总数}}\\times100\\%$$",
+      "",
+      "公式：$$\\text{RTY}=Y_1\\times Y_2\\times Y_3\\times\\dots\\times Y_n$$",
+      "",
+      "公式：良率=\\left((合格品数量)/(投入总数)\\right)×100\\% 适用场景：用于评估整条生产线。",
+      "",
+      "$$良率=\\left((合格品数量)/(投入总数或产出总数)\\right)×100\\%$$",
+      "",
+      "公式：$\\text{良率}=\\frac{\\text{合格品}+\\text{返修合格品}}{\\text{总投入量}}×100\\%$"
+    ].join("\n");
+    render();
+    statusText.textContent = "示例";
+  }
+
+  function startStream() {
+    const question = questionInput.value.trim();
+    if (!question) {
+      return;
+    }
+
+    closeStream("待发送");
+    markdownBuffer = "";
+    render();
+    setRunning(true);
+
+    const provider = encodeURIComponent(providerSelect.value);
+    const convId = encodeURIComponent(normalizeConvId());
+    source = new EventSource(`/ai/stream?question=${encodeURIComponent(question)}&provider=${provider}&convId=${convId}`);
+    source.onmessage = (event) => {
+      markdownBuffer += decodeSseContent(event.data);
+      render();
+    };
+    source.onerror = () => {
+      closeStream(markdownBuffer ? "已结束" : "连接失败");
+    };
+  }
+
+  function closeStream(status) {
+    if (source) {
+      source.close();
+      source = null;
+    }
+    setRunning(false);
+    statusText.textContent = status;
+  }
+
+  function setRunning(running) {
+    submitButton.disabled = running;
+    stopButton.disabled = !running;
+    statusText.textContent = running ? "生成中" : statusText.textContent;
+  }
+
+  function normalizeConvId() {
+    const convId = convIdInput.value.trim() || "1";
+    convIdInput.value = convId;
+    localStorage.setItem("ai-stream-conv-id", convId);
+    return convId;
+  }
+
+  function decodeSseContent(content) {
+    try {
+      return decodeURIComponent(content);
+    } catch (error) {
+      return content;
+    }
+  }
+
+  function render() {
+    const shouldStickToBottom = answer.scrollTop + answer.clientHeight >= answer.scrollHeight - 80;
+    const parsed = splitThinking(markdownBuffer);
+    thinking.innerHTML = renderMarkdown(parsed.thinking);
+    finalAnswer.innerHTML = renderMarkdown(parsed.answer);
+    const hasThinking = Boolean(parsed.thinking.trim());
+    thinkingPanel.classList.toggle("has-content", hasThinking);
+    if (!hasThinking) {
+      thinkingPanel.open = false;
+    }
+    counter.textContent = `${markdownBuffer.length} 字`;
+
+    if (shouldStickToBottom) {
+      answer.scrollTop = answer.scrollHeight;
+    }
+  }
+
+  function splitThinking(markdown) {
+    const lower = markdown.toLowerCase();
+    const start = lower.indexOf("<think>");
+
+    if (start < 0) {
+      return {
+        thinking: "",
+        answer: markdown
+      };
+    }
+
+    const end = lower.indexOf("</think>", start + 7);
+    if (end < 0) {
+      return {
+        thinking: markdown.slice(start + 7),
+        answer: markdown.slice(0, start)
+      };
+    }
+
+    return {
+      thinking: markdown.slice(start + 7, end),
+      answer: markdown.slice(0, start) + markdown.slice(end + 8)
+    };
+  }
+
+  function renderMarkdown(markdown) {
+    const normalizedMarkdown = normalizeMarkdown(markdown);
+    const lines = normalizedMarkdown.replace(/\r\n/g, "\n").split("\n");
+    const blocks = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+
+      if (/^\s*[*-]\s*$/.test(line)) {
+        i += 1;
+        continue;
+      }
+
+      if (!line.trim()) {
+        i += 1;
+        continue;
+      }
+
+      if (/^```/.test(line.trim())) {
+        const code = [];
+        i += 1;
+        while (i < lines.length && !/^```/.test(lines[i].trim())) {
+          code.push(lines[i]);
+          i += 1;
+        }
+        if (i < lines.length) {
+          i += 1;
+        }
+        blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+        continue;
+      }
+
+      const heading = line.match(/^(#{1,6})\s*(.+)$/);
+      if (heading) {
+        const level = heading[1].length;
+        blocks.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+        i += 1;
+        continue;
+      }
+
+      if (/^\s*---+\s*$/.test(line)) {
+        blocks.push("<hr>");
+        i += 1;
+        continue;
+      }
+
+      if (/^\s*\$\$/.test(line)) {
+        const mathLines = [];
+        while (i < lines.length) {
+          mathLines.push(lines[i]);
+          const current = lines[i].trim();
+          i += 1;
+          if ((current.endsWith("$$") && mathLines.length > 1) || /^\s*\$\$.*\$\$\s*$/.test(current)) {
+            break;
+          }
+        }
+        blocks.push(`<div class="math-block">${escapeHtml(normalizeMath(mathLines.join("\n")))}</div>`);
+        continue;
+      }
+
+      if (isTableRow(line)) {
+        const tableRows = [];
+        while (i < lines.length && isTableRow(lines[i])) {
+          tableRows.push(splitTableRow(lines[i]));
+          i += 1;
+        }
+        blocks.push(renderTable(tableRows));
+        continue;
+      }
+
+      if (/^>\s?/.test(line)) {
+        const quote = [];
+        while (i < lines.length && /^>\s?/.test(lines[i])) {
+          quote.push(lines[i].replace(/^>\s?/, ""));
+          i += 1;
+        }
+        blocks.push(`<blockquote>${renderMarkdown(quote.join("\n"))}</blockquote>`);
+        continue;
+      }
+
+      if (/^\s*-\s+\S/.test(line)) {
+        const items = [];
+        while (i < lines.length && /^\s*-\s+\S/.test(lines[i])) {
+          items.push(lines[i].replace(/^\s*-\s+/, ""));
+          i += 1;
+        }
+        const visibleItems = items.filter(item => item.trim() && item.trim() !== "-");
+        if (visibleItems.length) {
+          blocks.push(`<ul>${visibleItems.map(item => `<li>${renderInline(item)}</li>`).join("")}</ul>`);
+        }
+        continue;
+      }
+
+      if (/^\s*\d+[.)]\s*/.test(line)) {
+        const items = [];
+        while (i < lines.length && /^\s*\d+[.)]\s*/.test(lines[i])) {
+          items.push(lines[i].replace(/^\s*\d+[.)]\s*/, ""));
+          i += 1;
+        }
+        blocks.push(`<ol>${items.map(item => `<li>${renderInline(item)}</li>`).join("")}</ol>`);
+        continue;
+      }
+
+      const paragraph = [];
+      while (
+        i < lines.length &&
+        lines[i].trim() &&
+        !/^(#{1,6})\s*/.test(lines[i]) &&
+        !/^```/.test(lines[i].trim()) &&
+        !/^\s*---+\s*$/.test(lines[i]) &&
+        !isTableRow(lines[i]) &&
+        !/^>\s?/.test(lines[i]) &&
+        !/^\s*-\s+\S/.test(lines[i]) &&
+        !/^\s*\d+[.)]\s*/.test(lines[i])
+      ) {
+        paragraph.push(lines[i]);
+        i += 1;
+      }
+      blocks.push(`<p>${renderInline(paragraph.join(" "))}</p>`);
+    }
+
+    return blocks.join("");
+  }
+
+  function renderInline(text) {
+    const mathTokens = [];
+    const protectedText = normalizeInlineMarkdown(text)
+      .replace(/\$\$([^$]+)\$\$/g, (_, formula) => stashMath(formula, mathTokens))
+      .replace(/(^|[^$])\$([^$\n]+)\$(?!\$)/g,
+        (_, prefix, formula) => prefix + stashMath(formula, mathTokens))
+      .replace(/((?:良率|FPY|RTY|Y[_\w]*|[A-Za-z]+)\s*=\s*[^，。；;\n]*)/g,
+        (_, formula) => stashMath(formula, mathTokens));
+
+    return restoreMath(escapeHtml(protectedText)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([\s\S]+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*([^*\s][^*:：]{0,30}[:：])\s*\*/g, "<strong>$1</strong> ")
+      .replace(/\*([^*\n]+?)\*/g, "<em>$1</em>")
+      .replace(/\[([^\]]+)]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>'), mathTokens);
+  }
+
+  function stashMath(formula, mathTokens) {
+    const token = `@@MATH_${mathTokens.length}@@`;
+    mathTokens.push(`<span class="math-inline">${escapeHtml(normalizeMath(formula))}</span>`);
+    return token;
+  }
+
+  function restoreMath(html, mathTokens) {
+    return mathTokens.reduce(
+      (result, mathHtml, index) => result.replaceAll(`@@MATH_${index}@@`, mathHtml),
+      html
+    );
+  }
+
+  function isTableRow(line) {
+    const trimmed = line.trim();
+    return trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.split("|").length >= 4;
+  }
+
+  function isTableSeparator(cells) {
+    return cells.every(cell => /^:?-{3,}:?$/.test(cell.trim()));
+  }
+
+  function splitTableRow(line) {
+    return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(cell => cell.trim());
+  }
+
+  function renderTable(rows) {
+    if (!rows.length) {
+      return "";
+    }
+
+    const hasHeader = rows.length > 1 && isTableSeparator(rows[1]);
+    const header = hasHeader ? rows[0] : [];
+    const bodyRows = hasHeader ? rows.slice(2) : rows;
+
+    const thead = hasHeader
+      ? `<thead><tr>${header.map(cell => `<th>${renderInline(cell)}</th>`).join("")}</tr></thead>`
+      : "";
+    const tbody = `<tbody>${bodyRows.map(row => `<tr>${row.map(cell => `<td>${renderInline(cell)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+
+    return `<div class="table-scroll"><table>${thead}${tbody}</table></div>`;
+  }
+
+  function normalizeMarkdown(markdown) {
+    return markdown
+      .replace(/^(#{1,6})(\S)/gm, "$1 $2")
+      .replace(/^(\s*-)(\S)/gm, "$1 $2")
+      .split("\n")
+      .map(line => {
+        if (!/^\s*-\s+\S/.test(line)) {
+          return line;
+        }
+        return line.replace(/(\s)-(?=\S)/g, "$1\n- ");
+      })
+      .join("\n");
+  }
+
+  function normalizeInlineMarkdown(text) {
+    return text
+      .replace(/\$\$([\s\S]*?)\$\$/g, (_, formula) => `$$${normalizeMath(formula)}$$`)
+      .replace(/\$+\s*\\text\{([^}]+)}\s*\$+/g, "$1")
+      .replace(/\\frac\{([^{}]+)}\{([^{}]+)}/g, "($1)/($2)")
+      .replace(/\\leftrightarrow/g, "↔")
+      .replace(/\\rightarrow/g, "→")
+      .replace(/\\leftarrow/g, "←")
+      .replace(/\\rightarrows?/g, "→")
+      .replace(/\\leftarrows?/g, "←")
+      .replace(/\\left\s*/g, "")
+      .replace(/\\right\s*/g, "")
+      .replace(/\\times/g, "×")
+      .replace(/\\dots/g, "...")
+      .replace(/\\_/g, "_")
+      .replace(/\\%/g, "%")
+      .replace(/\$+\s*→\s*\$+/g, "→")
+      .replace(/\$+\s*←\s*\$+/g, "←")
+      .replace(/\$+\s*↔\s*\$+/g, "↔")
+      .replace(/\\\(/g, "")
+      .replace(/\\\)/g, "")
+      .replace(/\$(→|←|↔)\$/g, "$1");
+  }
+
+  function normalizeMath(text) {
+    return text
+      .replace(/^\s*\$\$|\$\$\s*$/g, "")
+      .replace(/^\s*\$|\$\s*$/g, "")
+      .replace(/\\text\{([^}]+)}/g, "$1")
+      .replace(/\\frac\{([^{}]+)}\{([^{}]+)}/g, "($1)/($2)")
+      .replace(/\\leftrightarrow/g, "↔")
+      .replace(/\\rightarrow/g, "→")
+      .replace(/\\leftarrow/g, "←")
+      .replace(/\\left\s*/g, "")
+      .replace(/\\right\s*/g, "")
+      .replace(/\\times/g, "×")
+      .replace(/\\div/g, "÷")
+      .replace(/\\dots/g, "...")
+      .replace(/\\_/g, "_")
+      .replace(/\\%/g, "%")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function escapeHtml(value) {
+    return value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+</script>
+</body>
+</html>

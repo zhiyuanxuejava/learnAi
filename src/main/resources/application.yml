@@ -1,0 +1,61 @@
+spring:
+  config:
+    import:
+      - optional:file:./config/openai-local.properties
+      - optional:file:./config/ollama-local.properties
+
+  application:
+    name: spring-ai-demo-service
+
+  ai:
+    openai:
+      base-url: ${OPENAI_BASE_URL:https://api.aisz.mom/v1}
+      chat:
+        model: ${OPENAI_CHAT_MODEL:gpt-5.4}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        model: ${OLLAMA_CHAT_MODEL:llama3.2}
+      embedding:
+        model: ${OLLAMA_EMBEDDING_MODEL:bge-m3:latest}
+    # 参考：https://docs.spring.io/spring-ai/reference/api/vectordbs/redis.html
+    vectorstore:
+      redis:
+        initialize-schema: true   #是否初始化所需的模式
+        index-name: custom-index  #用于存储向量的索引名称
+        prefix: ai-vectorstore     #Redis 键的前缀
+  servlet:
+    encoding:
+      enabled: true
+      charset: UTF-8
+      force: true
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6380}
+server:
+  port: 8099
+
+app:
+  ai:
+    thinking:
+      # false 表示隐藏思考过程，但模型仍可能在后端产生 thinking
+      visible: ${AI_THINKING_VISIBLE:false}
+    rag:
+      write-batch-size: ${AI_RAG_WRITE_BATCH_SIZE:100}
+      sample-documents:
+        - document-id: java-guide-pdf
+          file-path: upload/Java 学习指南.pdf
+          label: Java 学习指南.pdf
+        - document-id: java1234-profile-docx
+          file-path: upload/java1234简介.docx
+          label: java1234简介.docx
+        - document-id: java1234-site-intro-txt
+          file-path: upload/www.java1234.com网站简介.txt
+          label: www.java1234.com网站简介.txt
+        - document-id: teacher-profile-md
+          file-path: upload/小锋老师简介.md
+          label: 小锋老师简介.md
+#logging:
+#  level:
+#    org.springframework.ai:  DEBUG
