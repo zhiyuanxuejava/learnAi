@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.zhiyuan.demo01.dto.rag.RagClearResponse;
 import org.zhiyuan.demo01.dto.rag.RagRecallResponse;
 import org.zhiyuan.demo01.service.rag.RagDocumentImportService;
 import org.zhiyuan.demo01.service.rag.RagRecallService;
@@ -62,6 +63,17 @@ public class MyRagController {
     public String addDocs() {
         ragDocumentImportService.importConfiguredDocuments();
         return "ok";
+    }
+
+    /**
+     * 手动清空当前 RAG 使用的向量数据和辅助缓存。
+     * 这里会保留 Redis Search 索引结构，只删除文档数据，方便后续重新导入。
+     *
+     * @return 清理结果
+     */
+    @RequestMapping("/rag/clear")
+    public RagClearResponse clearRagData() {
+        return ragDocumentImportService.clearVectorStoreData();
     }
 
     /**

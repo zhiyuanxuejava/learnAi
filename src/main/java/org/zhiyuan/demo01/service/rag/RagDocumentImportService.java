@@ -1,12 +1,19 @@
 package org.zhiyuan.demo01.service.rag;
 
 import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.redis.autoconfigure.RedisVectorStoreProperties;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.zhiyuan.demo01.config.properties.RagProperties;
+import org.zhiyuan.demo01.dto.rag.RagClearResponse;
 import org.zhiyuan.demo01.exception.BadRequestException;
 import org.zhiyuan.demo01.exception.ProcessingException;
 import org.zhiyuan.demo01.service.rag.model.RagDocumentImportRequest;
@@ -60,21 +67,30 @@ public class RagDocumentImportService {
     private final RagProperties ragProperties;
 
     /**
+     * Redis 向量存储配置。
+     * 这里主要读取索引名和文档前缀，便于执行手动清库。
+     */
+    private final RedisVectorStoreProperties redisVectorStoreProperties;
+
+    /**
      * 创建 RAG 文档导入服务。
      *
      * @param vectorStore 向量存储实现
      * @param ragDocumentProcessingService 文档处理服务
      * @param stringRedisTemplate Redis 操作模板
      * @param ragProperties RAG 业务配置
+     * @param redisVectorStoreProperties Redis 向量存储配置
      */
     public RagDocumentImportService(VectorStore vectorStore,
                                     RagDocumentProcessingService ragDocumentProcessingService,
                                     StringRedisTemplate stringRedisTemplate,
-                                    RagProperties ragProperties) {
+                                    RagProperties ragProperties,
+                                    RedisVectorStoreProperties redisVectorStoreProperties) {
         this.vectorStore = vectorStore;
         this.ragDocumentProcessingService = ragDocumentProcessingService;
         this.stringRedisTemplate = stringRedisTemplate;
         this.ragProperties = ragProperties;
+        this.redisVectorStoreProperties = redisVectorStoreProperties;
     }
 
     /**
@@ -90,6 +106,40 @@ public class RagDocumentImportService {
         for (RagProperties.SampleDocument sampleDocument : ragProperties.getSampleDocuments()) {
             importDocument(buildImportRequest(sampleDocument));
         }
+    }
+
+    /**
+     * 清空当前 RAG 使用的 Redis 向量数据和辅助缓存。
+     * 这里删除的是：
+     * 1. RedisVectorStore 写入的向量文档 key
+     * 2. 文档状态 hash
+     * 3. 文档分块文本缓存 hash
+     *
+     * 注意：
+     * 当前方案会保留 Redis Search 索引结构本身，方便后续直接重新导入数据。
+     *
+     * @return 清理结果
+     */
+    public RagClearResponse clearVectorStoreData() {
+        String vectorKeyPrefix = resolveVectorKeyPrefix();
+
+        long deletedVectorDocumentCount = deleteKeysByPrefix(vectorKeyPrefix);
+        long deletedDocumentStateCount = deleteKeysByPrefix(RagRedisSchema.DOCUMENT_STATE_KEY_PREFIX);
+        long deletedDocumentChunkTextCount = deleteKeysByPrefix(RagRedisSchema.DOCUMENT_CHUNK_TEXT_KEY_PREFIX);
+        long totalDeletedCount = deletedVectorDocumentCount + deletedDocumentStateCount + deletedDocumentChunkTextCount;
+
+        log.info("RAG 向量数据清理完成，vectorKeys={}，documentStateKeys={}，documentChunkKeys={}，total={}",
+                deletedVectorDocumentCount, deletedDocumentStateCount, deletedDocumentChunkTextCount, totalDeletedCount);
+
+        return new RagClearResponse(
+                redisVectorStoreProperties.getIndexName(),
+                vectorKeyPrefix,
+                true,
+                deletedVectorDocumentCount,
+                deletedDocumentStateCount,
+                deletedDocumentChunkTextCount,
+                totalDeletedCount
+        );
     }
 
     /**
@@ -277,5 +327,62 @@ public class RagDocumentImportService {
         MessageDigest pathDigest = MessageDigest.getInstance("SHA-256");
         return HexFormat.of()
                 .formatHex(pathDigest.digest(path.toString().getBytes(StandardCharsets.UTF_8)));
+    }
+
+    /**
+     * 解析向量文档在 Redis 中使用的 key 前缀。
+     * Spring AI RedisVectorStore 会基于这个前缀写入实际文档 key，因此清库时也按它扫描。
+     *
+     * @return 向量文档 key 前缀
+     */
+    private String resolveVectorKeyPrefix() {
+        String prefix = redisVectorStoreProperties.getPrefix();
+        if (!StringUtils.hasText(prefix)) {
+            throw new ProcessingException("Redis 向量文档前缀未配置，无法执行清库");
+        }
+        return prefix.trim();
+    }
+
+    /**
+     * 按前缀扫描并删除 Redis key。
+     * 这里使用 SCAN，而不是 KEYS，避免在 key 数量较大时对 Redis 造成明显阻塞。
+     *
+     * @param keyPrefix key 前缀
+     * @return 实际删除的 key 数量
+     */
+    private long deleteKeysByPrefix(String keyPrefix) {
+        List<String> keys = scanKeysByPrefix(keyPrefix);
+        if (keys.isEmpty()) {
+            return 0L;
+        }
+
+        Long deletedCount = stringRedisTemplate.delete(keys);
+        return deletedCount == null ? 0L : deletedCount;
+    }
+
+    /**
+     * 按前缀扫描 Redis key。
+     *
+     * @param keyPrefix key 前缀
+     * @return 命中的 key 列表
+     */
+    private List<String> scanKeysByPrefix(String keyPrefix) {
+        return stringRedisTemplate.execute(new RedisCallback<>() {
+            @Override
+            public List<String> doInRedis(RedisConnection connection) throws DataAccessException {
+                ScanOptions scanOptions = ScanOptions.scanOptions()
+                        .match(keyPrefix + "*")
+                        .count(1000)
+                        .build();
+
+                List<String> keys = new ArrayList<>();
+                try (Cursor<byte[]> cursor = connection.scan(scanOptions)) {
+                    while (cursor.hasNext()) {
+                        keys.add(new String(cursor.next(), StandardCharsets.UTF_8));
+                    }
+                }
+                return keys;
+            }
+        });
     }
 }
