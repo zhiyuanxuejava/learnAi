@@ -4,6 +4,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.zhiyuan.demo01.dto.common.ApiErrorResponse;
 import org.zhiyuan.demo01.exception.BadRequestException;
 import org.zhiyuan.demo01.exception.ProcessingException;
@@ -45,6 +48,20 @@ public class GlobalExceptionHandler {
         log.error("业务处理异常", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiErrorResponse("PROCESSING_ERROR", ex.getMessage(), Instant.now()));
+    }
+
+    /**
+     * 处理静态资源不存在异常。
+     * 例如浏览器自动请求 favicon.ico，但项目中未提供对应资源。
+     *
+     * @param ex 静态资源未找到异常
+     * @return HTTP 404 响应
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleNoResourceFound(NoResourceFoundException ex) {
+        log.warn("静态资源不存在: {}", ex.getResourcePath());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse("NOT_FOUND", "请求的资源不存在", Instant.now()));
     }
 
     /**
