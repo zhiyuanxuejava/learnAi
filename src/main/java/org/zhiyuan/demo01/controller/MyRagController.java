@@ -32,9 +32,9 @@ public class MyRagController {
     /**
      * 创建 RAG 控制器。
      *
-     * @param vectorStore 向量存储实现
+     * @param vectorStore              向量存储实现
      * @param ragDocumentImportService 文档导入服务
-     * @param ragRecallService RAG 召回服务
+     * @param ragRecallService         RAG 召回服务
      */
     public MyRagController(VectorStore vectorStore,
                            RagDocumentImportService ragDocumentImportService,
@@ -80,12 +80,22 @@ public class MyRagController {
      * 测试 RAG 召回结果。
      *
      * @param query 查询内容
-     * @param topK 召回数量
+     * @param topK  召回数量
      * @return 召回结果
      */
     @GetMapping(value = "/rag/recall", produces = "application/json;charset=UTF-8")
     public RagRecallResponse recall(@RequestParam("query") String query,
                                     @RequestParam(defaultValue = "5") int topK) {
         return ragRecallService.recall(query, topK);
+    }
+
+    /**
+     * RAG 测试，基于用户的问题和检索的内容，调用LLM 生成答案。
+     */
+    @GetMapping(value = "/ask_rag")
+    public String askRag(@RequestParam("question") String question,
+                         @RequestParam(defaultValue = "ollama") String provider,
+                         @RequestParam(value = "convId", defaultValue = "1") String convId) {
+        return ragRecallService.askRag(question, provider,convId);
     }
 }

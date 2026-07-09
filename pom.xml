@@ -93,6 +93,13 @@
             </exclusions>
         </dependency>
 
+        <!--可以自动实现，检索 -> 增强上下文 -> 调用LLM生成答案的RAG流程-->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-vector-store-advisor</artifactId>
+        </dependency>
+
+
         <dependency>
             <groupId>redis.clients</groupId>
             <artifactId>jedis</artifactId>
