@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.zhiyuan.demo01.service.ChatClientFactory;
 import org.zhiyuan.demo01.tools.DateTimeTools;
+import org.zhiyuan.demo01.tools.mcp.LoggingMcpToolCallbackProvider;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -35,12 +36,16 @@ public class MyController {
 
     private final boolean thinkingVisible;
 
+    private final LoggingMcpToolCallbackProvider loggingMcpToolCallbackProvider;
+
     public MyController(ChatClientFactory chatClientFactory,
                         DateTimeTools dateTimeTools,
-                        @Value("${app.ai.thinking.visible:false}") boolean thinkingVisible) {
+                        @Value("${app.ai.thinking.visible:false}") boolean thinkingVisible,
+                        LoggingMcpToolCallbackProvider loggingMcpToolCallbackProvider) {
         this.chatClientFactory = chatClientFactory;
         this.dateTimeTools = dateTimeTools;
         this.thinkingVisible = thinkingVisible;
+        this.loggingMcpToolCallbackProvider = loggingMcpToolCallbackProvider;
     }
 
     /**
@@ -392,7 +397,8 @@ public class MyController {
         ChatClient chatClient = chatClientFactory.getChatClient(provider);
         return chatClient.prompt()
                 .user(question)
-                .tools(dateTimeTools)  //添加工具给模型进行调用,此处添加的工具是时间相关工具
+                .tools(dateTimeTools)  //添加本地时间工具
+                .tools(loggingMcpToolCallbackProvider)  //添加带日志能力的 MCP 工具回调
                 .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, convId))
                 .stream()
                 .chatResponse()

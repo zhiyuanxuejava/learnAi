@@ -772,13 +772,41 @@
       .replace(/^(#{1,6})(\S)/gm, "$1 $2")
       .replace(/^(\s*-)(\S)/gm, "$1 $2")
       .split("\n")
-      .map(line => {
+      .map(rawLine => {
+        const line = normalizeSectionTitleLine(rawLine);
         if (!/^\s*-\s+\S/.test(line)) {
           return line;
         }
         return line.replace(/(\s)-(?=\S)/g, "$1\n- ");
       })
       .join("\n");
+  }
+
+  function normalizeSectionTitleLine(line) {
+    const malformedSectionTitle = line.match(/^\s*(?:[-*•·●▪◦])\s+(.{1,20}?)\*\s*$/);
+    if (malformedSectionTitle && isStandaloneSectionTitle(malformedSectionTitle[1])) {
+      return `### ${malformedSectionTitle[1].trim()}`;
+    }
+
+    const emphasizedSectionTitle = line.match(/^\s*(?:[-*•·●▪◦])\s+\*\*(.{1,20}?)\*\*\s*$/);
+    if (emphasizedSectionTitle && isStandaloneSectionTitle(emphasizedSectionTitle[1])) {
+      return `### ${emphasizedSectionTitle[1].trim()}`;
+    }
+
+    const plainSectionTitle = line.match(/^\s*(?:[-*•·●▪◦])\s+(.{1,20}?)\s*$/);
+    if (plainSectionTitle && isStandaloneSectionTitle(plainSectionTitle[1])) {
+      return `### ${plainSectionTitle[1].trim()}`;
+    }
+
+    return line;
+  }
+
+  function isStandaloneSectionTitle(value) {
+    const text = value.trim();
+    if (!text || text.length > 20) {
+      return false;
+    }
+    return !/[，。；;：:,.!?？！]/.test(text);
   }
 
   function normalizeInlineMarkdown(text) {
