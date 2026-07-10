@@ -9,10 +9,12 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.util.MimeType;
+import org.springframework.util.MimeTypeUtils;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.zhiyuan.demo01.service.ChatClientFactory;
 import org.zhiyuan.demo01.tools.DateTimeTools;
 import org.zhiyuan.demo01.tools.mcp.LoggingMcpToolCallbackProvider;
@@ -388,10 +390,10 @@ public class MyController {
     }
 
     /**
-     * 带记忆的会话 + 工具调用
+     * 带记忆的会话 + 工具调用 + MCP
      */
-    @GetMapping(value = "/ai/stream",  produces = "text/event-stream;charset=UTF-8")
-    public Flux<ServerSentEvent<String>> getAnswerStream(@RequestParam("question") String question,
+    @GetMapping(value = "/ai/stream11",  produces = "text/event-stream;charset=UTF-8")
+    public Flux<ServerSentEvent<String>> getAnswerStream11(@RequestParam("question") String question,
                                                          @RequestParam(defaultValue = "ollama") String provider,
                                                          @RequestParam(value = "convId", defaultValue = "1") String convId) {
         ChatClient chatClient = chatClientFactory.getChatClient(provider);
@@ -400,6 +402,49 @@ public class MyController {
                 .tools(dateTimeTools)  //添加本地时间工具
                 .tools(loggingMcpToolCallbackProvider)  //添加带日志能力的 MCP 工具回调
                 .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, convId))
+                .stream()
+                .chatResponse()
+                .transform(this::toSseWithThinking);
+    }
+
+    /**
+     * 测试多模态能力：文字 + 上传图片 + Tool + MCP + Memory + SSE
+     */
+    @PostMapping(value = "/ai/stream",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE
+    )
+    public Flux<ServerSentEvent<String>> getAnswerStream(@RequestParam("question") String question,
+                                                         @RequestParam(defaultValue = "ollama") String provider,
+                                                         @RequestParam(value = "convId", defaultValue = "1") String convId,
+                                                         @RequestPart(value = "image", required = false) MultipartFile image) {
+        //创建ChatClient对象
+        ChatClient chatClient = chatClientFactory.getChatClient(provider);
+        //创建prompt对象，用于构建聊天请求
+        ChatClient.ChatClientRequestSpec requestSpec = chatClient.prompt();
+
+       //动态构造 发给用户的信息
+        if (image != null && !image.isEmpty()) {
+            //如果图片不为空，将图片结合问题添加到user中
+            String contentType = image.getContentType();
+            if (contentType == null || !contentType.startsWith("image/")) {
+                throw new IllegalArgumentException(
+                        "不支持的文件类型：" + contentType
+                );
+            }
+            MimeType mimeType = MimeTypeUtils.parseMimeType(contentType);
+            requestSpec = requestSpec.user(u -> u
+                    .text(question) //用户问题
+                    .media(mimeType, image.getResource())  //上传的图片资源
+            );
+        } else {
+            requestSpec = requestSpec.user(question);
+        }
+
+        return requestSpec
+                .tools(dateTimeTools) //添加本地时间工具
+                .tools(loggingMcpToolCallbackProvider)//添加带日志能力的 MCP 工具回调
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, convId)) //设置会话id，添加记忆功能
                 .stream()
                 .chatResponse()
                 .transform(this::toSseWithThinking);
