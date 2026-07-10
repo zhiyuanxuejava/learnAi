@@ -404,6 +404,7 @@
   </section>
 </main>
 
+<script src="/js/markdown-renderer.js"></script>
 <script>
   const form = document.querySelector("#questionForm");
   const questionInput = document.querySelector("#question");
@@ -528,6 +529,9 @@
   }
 
   function decodeSseContent(content) {
+    if (window.MarkdownRenderSupport) {
+      return window.MarkdownRenderSupport.decodeSseContent(content);
+    }
     try {
       return decodeURIComponent(content);
     } catch (error) {
@@ -537,9 +541,10 @@
 
   function render() {
     const shouldStickToBottom = answer.scrollTop + answer.clientHeight >= answer.scrollHeight - 80;
-    const parsed = splitThinking(markdownBuffer);
-    thinking.innerHTML = renderMarkdown(parsed.thinking);
-    finalAnswer.innerHTML = renderMarkdown(parsed.answer);
+    const renderer = window.MarkdownRenderSupport;
+    const parsed = renderer ? renderer.splitThinking(markdownBuffer) : splitThinking(markdownBuffer);
+    thinking.innerHTML = renderer ? renderer.renderMarkdown(parsed.thinking) : renderMarkdown(parsed.thinking);
+    finalAnswer.innerHTML = renderer ? renderer.renderMarkdown(parsed.answer) : renderMarkdown(parsed.answer);
     const hasThinking = Boolean(parsed.thinking.trim());
     thinkingPanel.classList.toggle("has-content", hasThinking);
     if (!hasThinking) {
