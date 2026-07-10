@@ -7,22 +7,42 @@ import org.zhiyuan.demo01.model.ai.AiProviderType;
 
 /**
  * ChatClient 工厂类。
- * 这里根据外部传入的 provider 编码，返回对应的 ChatClient Bean。
+ * 这里不负责创建 ChatClient，而是负责根据上游传入的条件，
+ * 从 Spring 容器中选择并返回对应的 ChatClient Bean。
+ *
+ * 当前主要根据以下两个条件进行路由：
+ * 1. providerCode：使用哪个模型提供方，例如 openai、ollama
+ * 2. memoryEnabled：是否启用会话记忆
  */
 @Service
 public class ChatClientFactory {
 
     private final ChatClient openAiChatClient;
+    private final ChatClient openAiChatClientWithoutMemory;
     private final ChatClient ollamaChatClient;
+    private final ChatClient ollamaChatClientWithoutMemory;
 
+
+    /**
+     * 构造函数，注入 ChatClient Bean。
+     * @param openAiChatClient
+     * @param openAiChatClientWithoutMemory
+     * @param ollamaChatClient
+     * @param ollamaChatClientWithoutMemory
+     */
     public ChatClientFactory(@Qualifier("openAiChatClient") ChatClient openAiChatClient,
-                             @Qualifier("ollamaChatClient") ChatClient ollamaChatClient) {
+                             @Qualifier("openAiChatClientWithoutMemory") ChatClient openAiChatClientWithoutMemory,
+                             @Qualifier("ollamaChatClient") ChatClient ollamaChatClient,
+                             @Qualifier("ollamaChatClientWithoutMemory") ChatClient ollamaChatClientWithoutMemory) {
         this.openAiChatClient = openAiChatClient;
+        this.openAiChatClientWithoutMemory = openAiChatClientWithoutMemory;
         this.ollamaChatClient = ollamaChatClient;
+        this.ollamaChatClientWithoutMemory = ollamaChatClientWithoutMemory;
     }
 
     /**
      * 获取指定 provider 对应的 ChatClient。
+     * 默认使用带记忆的 ChatClient
      *
      * @param providerCode provider 编码，例如 openai、ollama
      * @return 匹配到的 ChatClient
@@ -32,6 +52,28 @@ public class ChatClientFactory {
         return switch (providerType) {
             case OPENAI -> openAiChatClient;
             case OLLAMA -> ollamaChatClient;
+        };
+    }
+
+    /**
+     * 获取指定 provider 对应的 ChatClient，并明确指定是否启用会话记忆。
+     * 当需要严格测试当前轮 Prompt 时，应选择不带记忆的客户端，避免历史消息干扰结果。
+     *
+     * @param providerCode provider 编码，例如 openai、ollama
+     * @param memoryEnabled 是否启用会话记忆
+     * @return 匹配到的 ChatClient
+     */
+    public ChatClient getChatClient(String providerCode, boolean memoryEnabled) {
+        //启用内存，就调用带记忆的 ChatClient
+        if (memoryEnabled) {
+            return getChatClient(providerCode);
+        }
+
+        //不启用内存记忆，就返回 ChatClientWithoutMemory
+        AiProviderType providerType = AiProviderType.fromCode(providerCode);
+        return switch (providerType) {
+            case OPENAI -> openAiChatClientWithoutMemory;
+            case OLLAMA -> ollamaChatClientWithoutMemory;
         };
     }
 }

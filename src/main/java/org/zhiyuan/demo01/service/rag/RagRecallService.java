@@ -1,8 +1,5 @@
 package org.zhiyuan.demo01.service.rag;
 
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
-import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -14,7 +11,6 @@ import org.zhiyuan.demo01.dto.rag.RagRecallHit;
 import org.zhiyuan.demo01.dto.rag.RagRecallResponse;
 import org.zhiyuan.demo01.exception.BadRequestException;
 import org.zhiyuan.demo01.exception.ProcessingException;
-import org.zhiyuan.demo01.service.ChatClientFactory;
 import org.zhiyuan.demo01.service.rag.model.RagChunkLocation;
 import org.zhiyuan.demo01.store.rag.RagRedisSchema;
 import org.zhiyuan.demo01.store.rag.RagVectorMetadataSchema;
@@ -43,9 +39,6 @@ public class RagRecallService {
      */
     private final StringRedisTemplate stringRedisTemplate;
 
-    private final ChatClientFactory chatClientFactory;
-
-
     /**
      * 创建 RAG 召回服务。
      *
@@ -53,11 +46,9 @@ public class RagRecallService {
      * @param stringRedisTemplate Redis 操作模板
      */
     public RagRecallService(VectorStore vectorStore,
-                            StringRedisTemplate stringRedisTemplate,
-                            ChatClientFactory chatClientFactory) {
+                            StringRedisTemplate stringRedisTemplate) {
         this.vectorStore = vectorStore;
         this.stringRedisTemplate = stringRedisTemplate;
-        this.chatClientFactory = chatClientFactory;
     }
 
     /**
@@ -69,19 +60,37 @@ public class RagRecallService {
      * @return 召回结果
      */
     public RagRecallResponse recall(String query, int topK) {
+        return recall(query, topK, null);
+    }
+
+    /**
+     * 执行 RAG 召回测试。
+     * 这里允许额外传入相似度阈值，方便问答接口和测试页面统一调参。
+     *
+     * @param query 查询内容
+     * @param topK 召回数量
+     * @param similarityThreshold 相似度阈值；为空时表示不额外限制
+     * @return 召回结果
+     */
+    public RagRecallResponse recall(String query, int topK, Double similarityThreshold) {
         if (!StringUtils.hasText(query)) {
             throw new BadRequestException("查询内容不能为空");
+        }
+        if (similarityThreshold != null && (similarityThreshold < 0 || similarityThreshold > 1)) {
+            throw new BadRequestException("similarityThreshold 必须在 0 到 1 之间");
         }
 
         int finalTopK = Math.max(1, Math.min(topK, 20));
         long startTime = System.nanoTime();
 
-        List<Document> docs = vectorStore.similaritySearch(
-                SearchRequest.builder()
-                        .query(query.trim())
-                        .topK(finalTopK)
-                        .build()
-        );
+        SearchRequest.Builder searchRequestBuilder = SearchRequest.builder()
+                .query(query.trim())
+                .topK(finalTopK);
+        if (similarityThreshold != null) {
+            searchRequestBuilder.similarityThreshold(similarityThreshold);
+        }
+
+        List<Document> docs = vectorStore.similaritySearch(searchRequestBuilder.build());
 
         List<Document> sortedDocs = docs.stream()
                 .filter(Objects::nonNull)
@@ -275,41 +284,5 @@ public class RagRecallService {
             return Double.parseDouble(text);
         }
         return null;
-    }
-
-
-    /**
-     * RAG问答
-     *
-     * @param question
-     * @param provider
-     * @param convId
-     * @return
-     */
-    public String askRag(String question, String provider, String convId) {
-
-        //构造 QA
-        QuestionAnswerAdvisor qaAdvisor = QuestionAnswerAdvisor
-                .builder(vectorStore)
-                .searchRequest(
-                        SearchRequest.builder()
-                                .topK(5)
-                                .similarityThreshold(0.7) //相似度与之 0-1 值越大 要求越严格，过滤低相关性的结果，提高RAG召回的文档质量
-                                .build()
-                ).build();
-
-        //得到模型
-        ChatClient chatClient = chatClientFactory.getChatClient(provider);
-        String content = chatClient.prompt()
-                //检索到的文档
-                .advisors(qaAdvisor)
-                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, convId))
-                //用户的问题
-                .user(question)
-                .call()
-                .content();
-
-        System.out.println(content);
-        return content;
     }
 }
