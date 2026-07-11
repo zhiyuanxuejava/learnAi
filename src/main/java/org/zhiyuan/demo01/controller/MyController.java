@@ -497,7 +497,7 @@ public class MyController {
         }
 
         String provider = StringUtils.hasText(request.provider()) ? request.provider() : "ollama";
-        ChatClient chatClient = chatClientFactory.getChatClient(provider, false);
+        ChatClient chatClient = chatClientFactory.getChatClient(provider);
         List<Message> replayMessages = toReplayMessages(request.messages());
 
         return chatClient.prompt()

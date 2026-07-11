@@ -7,8 +7,11 @@ import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.execution.ToolExecutionException;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.stereotype.Component;
+
+import java.util.Arrays;
 
 /**
  * MCP ToolCallback 日志装饰器。
@@ -43,7 +46,7 @@ public class LoggingMcpToolCallbackProvider implements ToolCallbackProvider {
         ToolCallback[] loggingCallbacks = new ToolCallback[toolCallbacks.length];
 
         for (int i = 0; i < toolCallbacks.length; i++) {
-            loggingCallbacks[i] = new LoggingToolCallback(toolCallbacks[i]);
+            loggingCallbacks[i] = new LoggingToolCallback(delegate, toolCallbacks[i]);
         }
         return loggingCallbacks;
     }
@@ -55,9 +58,11 @@ public class LoggingMcpToolCallbackProvider implements ToolCallbackProvider {
      */
     private static final class LoggingToolCallback implements ToolCallback {
 
+        private final SyncMcpToolCallbackProvider provider;
         private final ToolCallback delegate;
 
-        private LoggingToolCallback(ToolCallback delegate) {
+        private LoggingToolCallback(SyncMcpToolCallbackProvider provider, ToolCallback delegate) {
+            this.provider = provider;
             this.delegate = delegate;
         }
 
@@ -101,18 +106,65 @@ public class LoggingMcpToolCallbackProvider implements ToolCallbackProvider {
             log.info("开始执行 MCP 工具，toolName={}，input={}", toolName, toolInput);
 
             try {
-                // 如果当前调用链传入了 ToolContext，就优先走带上下文的调用方式。
-                String result = toolContext == null ? delegate.call(toolInput) : delegate.call(toolInput, toolContext);
+                String result = callDelegate(delegate, toolInput, toolContext);
                 long cost = System.currentTimeMillis() - start;
 
                 log.info("MCP 工具执行完成，toolName={}，cost={}ms，result=\n{}", toolName, cost, result);
                 return result;
             }
             catch (Exception ex) {
+                if (isRetryableSessionTermination(ex)) {
+                    long firstCost = System.currentTimeMillis() - start;
+                    log.warn("MCP 会话已终止，准备刷新工具缓存并重试一次，toolName={}，cost={}ms", toolName, firstCost);
+                    try {
+                        ToolCallback refreshedDelegate = resolveFreshDelegate(toolName);
+                        long retryStart = System.currentTimeMillis();
+                        String result = callDelegate(refreshedDelegate, toolInput, toolContext);
+                        long retryCost = System.currentTimeMillis() - retryStart;
+                        log.info("MCP 工具重试成功，toolName={}，retryCost={}ms，result=\n{}", toolName, retryCost, result);
+                        return result;
+                    }
+                    catch (Exception retryEx) {
+                        long totalCost = System.currentTimeMillis() - start;
+                        log.error("MCP 工具重试失败，toolName={}，cost={}ms，input={}", toolName, totalCost, toolInput, retryEx);
+                        throw retryEx;
+                    }
+                }
+
                 long cost = System.currentTimeMillis() - start;
                 log.error("MCP 工具执行失败，toolName={}，cost={}ms，input={}", toolName, cost, toolInput, ex);
                 throw ex;
             }
+        }
+
+        private String callDelegate(ToolCallback currentDelegate, String toolInput, ToolContext toolContext) {
+            return toolContext == null ? currentDelegate.call(toolInput) : currentDelegate.call(toolInput, toolContext);
+        }
+
+        private ToolCallback resolveFreshDelegate(String toolName) {
+            provider.invalidateCache();
+            return Arrays.stream(provider.getToolCallbacks())
+                    .filter(callback -> callback.getToolDefinition().name().equals(toolName))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("刷新 MCP 工具缓存后，仍未找到工具: " + toolName));
+        }
+
+        private boolean isRetryableSessionTermination(Throwable throwable) {
+            Throwable current = throwable;
+            while (current != null) {
+                String message = current.getMessage();
+                if (message != null && message.contains("MCP session with server terminated")) {
+                    return true;
+                }
+                if (current instanceof ToolExecutionException toolExecutionException
+                        && toolExecutionException.getCause() != null
+                        && toolExecutionException.getCause() != current) {
+                    current = toolExecutionException.getCause();
+                    continue;
+                }
+                current = current.getCause();
+            }
+            return false;
         }
     }
 }
