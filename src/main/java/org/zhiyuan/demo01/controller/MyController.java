@@ -447,7 +447,7 @@ public class MyController {
             produces = MediaType.TEXT_EVENT_STREAM_VALUE
     )
     public Flux<ServerSentEvent<String>> postAnswerStreamReplay(@RequestBody StreamReplayRequest request) {
-        return buildReplayStreamResponse(request);
+        return buildStreamResponseFromReplayMessages(request);
     }
 
 
@@ -491,13 +491,27 @@ public class MyController {
                 .transform(this::toSseWithThinking);
     }
 
-    private Flux<ServerSentEvent<String>> buildReplayStreamResponse(StreamReplayRequest request) {
+    /**
+     * 基于前端显式传入的历史消息，构建一次“无 ChatMemory 的流式对话”。
+     *
+     * 这里的核心目标不是继续复用服务端会话记忆，而是把“重新回答”严格限定在
+     * 前端选定的那一段上下文里，避免：
+     * 1. 服务端 ChatMemory 再额外注入一份历史，造成上下文重复；
+     * 2. conversationId 缺失时触发 MessageChatMemoryAdvisor 的参数校验异常；
+     * 3. 用户编辑/回滚后，服务端仍沿用旧会话状态，导致回答偏离当前重放上下文。
+     *
+     * @param request 前端传来的重放请求，里面已经包含本次要重建的历史消息
+     * @return 基于显式历史消息生成的流式响应
+     */
+    private Flux<ServerSentEvent<String>> buildStreamResponseFromReplayMessages(StreamReplayRequest request) {
         if (request == null || request.messages() == null || request.messages().isEmpty()) {
             throw new BadRequestException("重新处理的消息内容不能为空");
         }
 
         String provider = StringUtils.hasText(request.provider()) ? request.provider() : "ollama";
-        ChatClient chatClient = chatClientFactory.getChatClient(provider);
+        // 重放链路通过前端传入的本地历史消息重建上下文，因此这里必须关闭服务端 ChatMemory，
+        // 否则默认的 MessageChatMemoryAdvisor 会要求 conversationId，并且还会把历史上下文重复叠加。
+        ChatClient chatClient = chatClientFactory.getChatClient(provider, false);
         List<Message> replayMessages = toReplayMessages(request.messages());
 
         return chatClient.prompt()
@@ -509,6 +523,17 @@ public class MyController {
                 .transform(this::toSseWithThinking);
     }
 
+    /**
+     * 把前端传来的简化消息结构，转换为 Spring AI 可直接发送给模型的 Message 列表。
+     *
+     * 这一步相当于把“浏览器本地会话快照”恢复成真正的模型输入。
+     * 当前只保留重放必需的角色与内容：
+     * 1. user：用户问题，以及用户在该轮上传的图片；
+     * 2. assistant：历史回答文本，用来帮助模型理解之前已经生成过什么。
+     *
+     * @param messages 前端消息列表
+     * @return Spring AI Message 列表
+     */
     private List<Message> toReplayMessages(List<StreamReplayMessage> messages) {
         List<Message> replayMessages = new ArrayList<>(messages.size());
         for (StreamReplayMessage message : messages) {
@@ -518,6 +543,7 @@ public class MyController {
             String role = message.role() == null ? "" : message.role().trim().toLowerCase();
             String content = message.content() == null ? "" : message.content();
             switch (role) {
+                //构建单条用户消息
                 case "user" -> replayMessages.add(buildReplayUserMessage(content, message.image()));
                 case "assistant" -> replayMessages.add(new AssistantMessage(content));
                 default -> throw new BadRequestException("不支持的消息角色：" + message.role());
@@ -527,12 +553,25 @@ public class MyController {
         if (replayMessages.isEmpty()) {
             throw new BadRequestException("重新处理的消息内容不能为空");
         }
+        // 重放链路约定：最后一条必须是用户消息。
+        // 这样模型才会把它视为“当前待回答的问题”，而不是把 assistant 历史回答当作输入末尾。
         if (!(replayMessages.get(replayMessages.size() - 1) instanceof UserMessage)) {
             throw new BadRequestException("重新处理时，最后一条消息必须是用户提问");
         }
         return replayMessages;
     }
 
+    /**
+     * 构建单条用户消息。
+     *
+     * 如果本轮用户带了图片，前端会把图片保存为 dataUrl，一并放在重放请求里。
+     * 这里需要把 dataUrl 重新还原成 Spring AI 可识别的 Media，确保“重新回答”时
+     * 模型仍然能够看到原图，而不是只看到问题文本。
+     *
+     * @param content 用户文本内容
+     * @param image 用户图片快照
+     * @return Spring AI 的 UserMessage
+     */
     private UserMessage buildReplayUserMessage(String content, StreamReplayImage image) {
         UserMessage.Builder builder = UserMessage.builder().text(content);
         if (image != null && StringUtils.hasText(image.dataUrl())) {
@@ -541,6 +580,18 @@ public class MyController {
         return builder.build();
     }
 
+    /**
+     * 把前端持久化的 dataUrl 图片快照，还原成模型可消费的 Media 资源。
+     *
+     * 浏览器端为了本地持久化和“重新回答”能力，会把上传图片转成 dataUrl 存在 IndexedDB。
+     * 但模型侧不能直接消费 dataUrl 字符串，因此这里要完成三步转换：
+     * 1. 校验 dataUrl 结构是否合法；
+     * 2. base64 解码为二进制字节；
+     * 3. 包装成带文件名的 Resource，再构造 Media 交给 Spring AI。
+     *
+     * @param image 前端持久化后的图片快照
+     * @return 模型可消费的 Media 对象
+     */
     private Media buildReplayImageMedia(StreamReplayImage image) {
         String dataUrl = image.dataUrl().trim();
         int commaIndex = dataUrl.indexOf(',');
@@ -582,6 +633,10 @@ public class MyController {
     ) {
     }
 
+    /**
+     * 前端传给后端的重放消息结构。
+     * 这里只保留“重新回答”所需的最小信息集，避免把页面展示态、状态字段等无关信息带入模型。
+     */
     public record StreamReplayMessage(
             String role,
             String content,
@@ -589,6 +644,10 @@ public class MyController {
     ) {
     }
 
+    /**
+     * 前端保存的图片快照。
+     * dataUrl 用于恢复图片字节，name/type 用于尽量还原上传时的文件元数据。
+     */
     public record StreamReplayImage(
             String dataUrl,
             String name,
@@ -596,6 +655,12 @@ public class MyController {
     ) {
     }
 
+    /**
+     * 给 ByteArrayResource 补上文件名。
+     *
+     * 默认的 ByteArrayResource 不携带 filename，而部分模型/中间层在处理多模态输入时
+     * 会依赖文件名辅助识别资源类型，因此这里显式保留原文件名，尽量贴近用户首次上传时的语义。
+     */
     private static final class NamedByteArrayResource extends ByteArrayResource {
 
         private final String filename;
