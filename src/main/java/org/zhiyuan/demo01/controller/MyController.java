@@ -3,18 +3,24 @@ package org.zhiyuan.demo01.controller;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.ai.content.Media;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.zhiyuan.demo01.exception.BadRequestException;
 import org.zhiyuan.demo01.service.ChatClientFactory;
 import org.zhiyuan.demo01.tools.DateTimeTools;
 import org.zhiyuan.demo01.tools.mcp.LoggingMcpToolCallbackProvider;
@@ -24,6 +30,7 @@ import reactor.core.publisher.Mono;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -196,7 +203,7 @@ public class MyController {
                 }))
                 .map(content -> ServerSentEvent.builder(encodeSseContent(content)).build())
                 .onErrorResume(e -> Flux.just(
-                        ServerSentEvent.builder(encodeSseContent("模型调用失败：" + e.getMessage())).build()
+                        ServerSentEvent.builder(encodeSseContent("模型调用失败：" + e.getMessage())).event("failure").build()
                 ));
     }
 
@@ -431,6 +438,18 @@ public class MyController {
         return buildStreamResponse(question, provider, convId, image);
     }
 
+    /**
+     * 使用前端本地历史消息重建上下文，重新处理指定轮次。
+     * 这样可以避免直接重复提交到带记忆的会话里，导致历史上下文被污染。
+     */
+    @PostMapping(value = "/ai/stream",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE
+    )
+    public Flux<ServerSentEvent<String>> postAnswerStreamReplay(@RequestBody StreamReplayRequest request) {
+        return buildReplayStreamResponse(request);
+    }
+
 
     /**
      *  构建流式响应
@@ -470,5 +489,125 @@ public class MyController {
                 .stream()
                 .chatResponse()
                 .transform(this::toSseWithThinking);
+    }
+
+    private Flux<ServerSentEvent<String>> buildReplayStreamResponse(StreamReplayRequest request) {
+        if (request == null || request.messages() == null || request.messages().isEmpty()) {
+            throw new BadRequestException("重新处理的消息内容不能为空");
+        }
+
+        String provider = StringUtils.hasText(request.provider()) ? request.provider() : "ollama";
+        ChatClient chatClient = chatClientFactory.getChatClient(provider, false);
+        List<Message> replayMessages = toReplayMessages(request.messages());
+
+        return chatClient.prompt()
+                .messages(replayMessages)
+                .tools(dateTimeTools)
+                .tools(loggingMcpToolCallbackProvider)
+                .stream()
+                .chatResponse()
+                .transform(this::toSseWithThinking);
+    }
+
+    private List<Message> toReplayMessages(List<StreamReplayMessage> messages) {
+        List<Message> replayMessages = new ArrayList<>(messages.size());
+        for (StreamReplayMessage message : messages) {
+            if (message == null) {
+                continue;
+            }
+            String role = message.role() == null ? "" : message.role().trim().toLowerCase();
+            String content = message.content() == null ? "" : message.content();
+            switch (role) {
+                case "user" -> replayMessages.add(buildReplayUserMessage(content, message.image()));
+                case "assistant" -> replayMessages.add(new AssistantMessage(content));
+                default -> throw new BadRequestException("不支持的消息角色：" + message.role());
+            }
+        }
+
+        if (replayMessages.isEmpty()) {
+            throw new BadRequestException("重新处理的消息内容不能为空");
+        }
+        if (!(replayMessages.get(replayMessages.size() - 1) instanceof UserMessage)) {
+            throw new BadRequestException("重新处理时，最后一条消息必须是用户提问");
+        }
+        return replayMessages;
+    }
+
+    private UserMessage buildReplayUserMessage(String content, StreamReplayImage image) {
+        UserMessage.Builder builder = UserMessage.builder().text(content);
+        if (image != null && StringUtils.hasText(image.dataUrl())) {
+            builder.media(buildReplayImageMedia(image));
+        }
+        return builder.build();
+    }
+
+    private Media buildReplayImageMedia(StreamReplayImage image) {
+        String dataUrl = image.dataUrl().trim();
+        int commaIndex = dataUrl.indexOf(',');
+        if (!dataUrl.startsWith("data:") || commaIndex < 0) {
+            throw new BadRequestException("图片数据格式不正确，无法重新处理");
+        }
+
+        String metadata = dataUrl.substring(5, commaIndex);
+        if (!metadata.contains(";base64")) {
+            throw new BadRequestException("图片数据格式不正确，无法重新处理");
+        }
+
+        String mimeTypeValue = StringUtils.hasText(image.type())
+                ? image.type()
+                : metadata.replace(";base64", "");
+        if (!mimeTypeValue.startsWith("image/")) {
+            throw new BadRequestException("只支持重新处理图片消息");
+        }
+
+        byte[] bytes;
+        try {
+            bytes = Base64.getDecoder().decode(dataUrl.substring(commaIndex + 1));
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException("图片数据已损坏，无法重新处理", ex);
+        }
+
+        String fileName = StringUtils.hasText(image.name()) ? image.name() : "image";
+        ByteArrayResource resource = new NamedByteArrayResource(bytes, fileName);
+        return Media.builder()
+                .mimeType(MimeTypeUtils.parseMimeType(mimeTypeValue))
+                .data(resource)
+                .name(fileName)
+                .build();
+    }
+
+    public record StreamReplayRequest(
+            String provider,
+            List<StreamReplayMessage> messages
+    ) {
+    }
+
+    public record StreamReplayMessage(
+            String role,
+            String content,
+            StreamReplayImage image
+    ) {
+    }
+
+    public record StreamReplayImage(
+            String dataUrl,
+            String name,
+            String type
+    ) {
+    }
+
+    private static final class NamedByteArrayResource extends ByteArrayResource {
+
+        private final String filename;
+
+        private NamedByteArrayResource(byte[] byteArray, String filename) {
+            super(byteArray);
+            this.filename = filename;
+        }
+
+        @Override
+        public String getFilename() {
+            return filename;
+        }
     }
 }

@@ -5,12 +5,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.zhiyuan.demo01.dto.common.ApiErrorResponse;
 import org.zhiyuan.demo01.exception.BadRequestException;
 import org.zhiyuan.demo01.exception.ProcessingException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Instant;
 
@@ -22,6 +24,11 @@ import java.time.Instant;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private final String maxFileSize;
+
+    public GlobalExceptionHandler(@Value("${spring.servlet.multipart.max-file-size:10MB}") String maxFileSize) {
+        this.maxFileSize = maxFileSize;
+    }
 
     /**
      * 处理客户端参数异常。
@@ -29,11 +36,24 @@ public class GlobalExceptionHandler {
      * @param ex 参数异常
      * @return HTTP 400 响应
      */
-    @ExceptionHandler(BadRequestException.class)
-    public ResponseEntity<ApiErrorResponse> handleBadRequest(BadRequestException ex) {
+    @ExceptionHandler({BadRequestException.class, IllegalArgumentException.class})
+    public ResponseEntity<ApiErrorResponse> handleBadRequest(RuntimeException ex) {
         log.warn("请求参数异常: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ApiErrorResponse("BAD_REQUEST", ex.getMessage(), Instant.now()));
+    }
+
+    /**
+     * 处理上传文件超限异常。
+     *
+     * @param ex 上传超限异常
+     * @return HTTP 413 响应
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex) {
+        log.warn("上传文件超限: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ApiErrorResponse("FILE_TOO_LARGE", "上传图片过大，请控制在 " + maxFileSize + " 以内后重试", Instant.now()));
     }
 
     /**

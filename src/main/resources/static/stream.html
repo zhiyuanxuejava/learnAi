@@ -448,6 +448,45 @@
       white-space: pre-wrap;
     }
 
+    .message-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 24px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .message-actions-user {
+      justify-content: flex-end;
+      padding-right: 6px;
+    }
+
+    .message-actions-assistant {
+      margin-top: 12px;
+    }
+
+    .message-action-button {
+      min-height: 24px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: #ffffff;
+      color: #2e2e2e;
+      font-size: 12px;
+      transition: background 140ms ease, border-color 140ms ease;
+    }
+
+    .message-action-button:hover:not(:disabled) {
+      background: #f5f5f5;
+      border-color: #d5d5d5;
+    }
+
+    .message-action-button:disabled {
+      color: #9a9a9a;
+      cursor: default;
+    }
+
     .assistant-block {
       width: 100%;
       font-size: 15px;
@@ -483,6 +522,22 @@
       background: #111111;
       animation: blink 900ms steps(1) infinite;
       vertical-align: text-bottom;
+    }
+
+    .assistant-error {
+      display: none;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #fbefef;
+      color: #8a2c2c;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .assistant-error.is-visible {
+      display: block;
     }
 
     @keyframes blink {
@@ -1008,6 +1063,8 @@
   };
   const databaseName = "spring-ai-chat-workspace";
   const sessionStoreName = "sessions";
+  const maxImageBytes = 10 * 1024 * 1024;
+  const maxImageSizeLabel = "10MB";
 
   let sessions = [];
   let activeSessionId = null;
@@ -1064,7 +1121,7 @@
       persistSession(session);
     });
 
-    imageInput.addEventListener("change", renderAttachmentPreview);
+    imageInput.addEventListener("change", handleImageSelection);
     removeAttachmentButton.addEventListener("click", clearSelectedImage);
     stopButton.addEventListener("click", () => stopSessionStream(activeSessionId));
     newChatButton.addEventListener("click", startNewChat);
@@ -1085,6 +1142,11 @@
       return;
     }
 
+    if (selectedFile && selectedFile.size > maxImageBytes) {
+      setStatusForActiveSession(`图片过大，最大支持 ${maxImageSizeLabel}`);
+      return;
+    }
+
     const question = text || "请结合图片进行分析。";
     const session = await ensureActiveSession(question);
     const streamState = getOrCreateSessionStream(session.id);
@@ -1095,50 +1157,52 @@
     }
 
     setSessionRunning(session.id, true);
-    questionInput.value = "";
-    autoResizeTextarea();
-    clearSelectedImage();
+    try {
+      questionInput.value = "";
+      autoResizeTextarea();
+      clearSelectedImage();
 
-    // 截图转换为 dataUrl 是异步操作，先固定所属会话，避免用户切换页面后把消息写入新会话。
-    const image = selectedFile ? await buildImageSnapshot(selectedFile) : null;
+      // 截图转换为 dataUrl 是异步操作，先固定所属会话，避免用户切换页面后把消息写入新会话。
+      const image = selectedFile ? await buildImageSnapshot(selectedFile) : null;
 
-    const userMessage = {
-      id: createId(),
-      role: "user",
-      content: question,
-      image,
-      createdAt: Date.now()
-    };
-    session.messages.push(userMessage);
-    session.updatedAt = Date.now();
-    await persistSession(session);
+      const userMessage = {
+        id: createId(),
+        role: "user",
+        content: question,
+        image,
+        createdAt: Date.now()
+      };
+      session.messages.push(userMessage);
+      session.updatedAt = Date.now();
+      await persistSession(session);
 
-    if (session.id === activeSessionId) {
-      appendUserMessage(userMessage);
+      if (session.id === activeSessionId) {
+        appendUserMessage(userMessage);
+      }
+      renderSessionList();
+
+      const assistantMessage = {
+        id: createId(),
+        role: "assistant",
+        content: "",
+        createdAt: Date.now(),
+        status: "streaming",
+        errorMessage: "",
+        retryCount: 0
+      };
+      session.messages.push(assistantMessage);
+      const assistantState = session.id === activeSessionId
+        ? appendAssistantMessage(assistantMessage, session.id)
+        : null;
+      streamState.assistantState = assistantState;
+      streamState.assistantMessageId = assistantMessage.id;
+      await persistSession(session);
+      await runAssistantRequest(session.id, assistantMessage.id, "生成中");
     }
-    renderSessionList();
-
-    const assistantMessage = {
-      id: createId(),
-      role: "assistant",
-      content: "",
-      createdAt: Date.now(),
-      status: "streaming"
-    };
-    session.messages.push(assistantMessage);
-    const assistantState = session.id === activeSessionId
-      ? appendAssistantMessage(assistantMessage, session.id)
-      : null;
-    streamState.assistantState = assistantState;
-    streamState.assistantMessageId = assistantMessage.id;
-    await persistSession(session);
-    setSessionStatus(session.id, "生成中");
-
-    if (selectedFile) {
-      await startPostStream(question, selectedFile, session, assistantMessage.id);
-      return;
+    catch (error) {
+      setSessionRunning(session.id, false);
+      setSessionStatus(session.id, error.message || "发送失败");
     }
-    startGetStream(question, session, assistantMessage.id);
   }
 
   async function ensureActiveSession(firstQuestion) {
@@ -1164,56 +1228,98 @@
     return session;
   }
 
-  function startGetStream(question, session, assistantMessageId) {
-    const query = new URLSearchParams({
-      question,
-      provider: session.provider,
-      convId: session.id
-    });
-    const streamState = getOrCreateSessionStream(session.id);
-    const source = new EventSource(`/ai/stream?${query.toString()}`);
-    streamState.source = source;
-    source.onmessage = event => appendStreamText(session.id, assistantMessageId, event.data);
-    source.onerror = () => {
-      // EventSource 在本地关闭后也会触发 error，不应把用户主动停止误判为生成失败。
-      const currentStream = sessionStreams.get(session.id);
-      if (!currentStream || !currentStream.running || currentStream.assistantMessageId !== assistantMessageId) {
-        return;
-      }
-      const assistantState = getAssistantState(session.id, assistantMessageId);
-      const hasContent = Boolean(assistantState && assistantState.message.content.trim());
-      finishSessionStream(session.id, assistantMessageId, hasContent ? "complete" : "error", hasContent ? "已完成" : "连接失败");
-    };
+  async function runAssistantRequest(sessionId, assistantMessageId, runningStatus = "生成中") {
+    const session = getSessionById(sessionId);
+    if (!session) {
+      return;
+    }
+    const streamState = getOrCreateSessionStream(sessionId);
+    streamState.assistantMessageId = assistantMessageId;
+    streamState.assistantState = sessionId === activeSessionId
+      ? getRenderedAssistantState(sessionId, assistantMessageId)
+      : null;
+    setSessionStatus(sessionId, runningStatus);
+    await persistSession(session);
+    try {
+      await startReplayStream(buildReplayRequest(session, assistantMessageId), session, assistantMessageId);
+    }
+    catch (error) {
+      registerAssistantFailure(sessionId, assistantMessageId, error.message || "请求构建失败");
+      finishSessionStream(sessionId, assistantMessageId, "error", "请求失败");
+    }
   }
 
-  async function startPostStream(question, file, session, assistantMessageId) {
-    const formData = new FormData();
-    formData.append("question", question);
-    formData.append("provider", session.provider);
-    formData.append("convId", session.id);
-    formData.append("image", file);
+  async function requestAssistantReplay(sessionId, assistantMessageId) {
+    const session = getSessionById(sessionId);
+    if (!session) {
+      return;
+    }
+    const streamState = getOrCreateSessionStream(sessionId);
+    if (streamState.running) {
+      return;
+    }
+
+    const assistantIndex = session.messages.findIndex(message => message.id === assistantMessageId && message.role === "assistant");
+    if (assistantIndex < 1) {
+      setSessionStatus(sessionId, "无法重新处理");
+      return;
+    }
+
+    if (assistantIndex < session.messages.length - 1
+      && !window.confirm("从这条回答重新处理后，后续消息会被移除。是否继续？")) {
+      return;
+    }
+
+    trimSessionAfterIndex(session, assistantIndex);
+    const assistantMessage = session.messages[assistantIndex];
+    assistantMessage.content = "";
+    assistantMessage.status = "streaming";
+    assistantMessage.errorMessage = "";
+    assistantMessage.retryCount = (assistantMessage.retryCount || 0) + 1;
+    session.updatedAt = Date.now();
+
+    setSessionRunning(sessionId, true);
+    streamState.assistantMessageId = assistantMessageId;
+    await persistSession(session);
+    renderSessionList();
+    if (sessionId === activeSessionId) {
+      renderActiveSession();
+    }
+
+    await runAssistantRequest(sessionId, assistantMessageId, "重新处理中");
+  }
+
+  async function startReplayStream(payload, session, assistantMessageId) {
     const streamState = getOrCreateSessionStream(session.id);
     const abortController = new AbortController();
     streamState.abortController = abortController;
+    streamState.failureMessage = "";
 
     try {
       const response = await fetch("/ai/stream", {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload),
         signal: abortController.signal
       });
       if (!response.ok || !response.body) {
-        throw new Error(`请求失败：${response.status}`);
+        throw new Error(await extractResponseError(response));
       }
       await consumeSseStream(response.body, session.id, assistantMessageId);
+      if (streamState.failureMessage) {
+        finishSessionStream(session.id, assistantMessageId, "error", "处理失败");
+        return;
+      }
       finishSessionStream(session.id, assistantMessageId, "complete", "已完成");
     }
     catch (error) {
       if (error.name === "AbortError") {
-        finishSessionStream(session.id, assistantMessageId, "stopped", "已停止");
         return;
       }
-      markAssistantFailed(session.id, assistantMessageId, error.message || "连接失败");
+      registerAssistantFailure(session.id, assistantMessageId, error.message || "连接失败");
+      finishSessionStream(session.id, assistantMessageId, "error", "连接失败");
     }
   }
 
@@ -1242,12 +1348,23 @@
   }
 
   function appendSseChunk(chunk, sessionId, assistantMessageId) {
+    const eventType = chunk.split(/\r?\n/)
+      .find(line => line.startsWith("event:"))
+      ?.slice(6)
+      .trim() || "message";
     const data = chunk.split(/\r?\n/)
       .filter(line => line.startsWith("data:"))
       .map(line => line.slice(5).replace(/^\s/, ""));
-    if (data.length) {
-      appendStreamText(sessionId, assistantMessageId, data.join("\n"));
+    if (!data.length) {
+      return;
     }
+
+    const payload = data.join("\n");
+    if (eventType === "failure") {
+      registerAssistantFailure(sessionId, assistantMessageId, decodeSseContent(payload));
+      return;
+    }
+    appendStreamText(sessionId, assistantMessageId, payload);
   }
 
   function appendStreamText(sessionId, assistantMessageId, rawContent) {
@@ -1281,17 +1398,35 @@
       streamState.running = false;
       streamState.assistantState = null;
       streamState.assistantMessageId = null;
+      streamState.failureMessage = "";
     }
     setSessionRunning(sessionId, false);
     setSessionStatus(sessionId, statusText);
   }
 
   function markAssistantFailed(sessionId, assistantMessageId, message) {
+    registerAssistantFailure(sessionId, assistantMessageId, message);
+    finishSessionStream(sessionId, assistantMessageId, "error", "连接失败");
+  }
+
+  function registerAssistantFailure(sessionId, assistantMessageId, message) {
     const assistantMessage = getAssistantMessage(sessionId, assistantMessageId);
-    if (assistantMessage && !assistantMessage.content.trim()) {
+    if (!assistantMessage) {
+      return;
+    }
+    assistantMessage.errorMessage = message;
+    if (!assistantMessage.content.trim()) {
       assistantMessage.content = `> 请求失败\n\n${message}`;
     }
-    finishSessionStream(sessionId, assistantMessageId, "error", "连接失败");
+    const assistantState = getAssistantState(sessionId, assistantMessageId);
+    if (assistantState && sessionId === activeSessionId) {
+      renderAssistantContent(assistantState);
+    }
+    const streamState = sessionStreams.get(sessionId);
+    if (streamState) {
+      streamState.failureMessage = message;
+    }
+    scheduleSessionPersist(sessionId);
   }
 
   function stopSessionStream(sessionId) {
@@ -1371,6 +1506,12 @@
     bubble.className = "user-bubble";
     bubble.textContent = message.content;
     stack.appendChild(bubble);
+
+    const actions = document.createElement("div");
+    actions.className = "message-actions message-actions-user";
+    actions.innerHTML = `<span>${message.image ? "图片消息" : "已发送"}</span>`;
+    stack.appendChild(actions);
+
     row.appendChild(stack);
     conversationInner.appendChild(row);
     main.classList.remove("is-empty");
@@ -1382,6 +1523,7 @@
   function appendAssistantMessage(message, sessionId, shouldScroll = true) {
     const row = document.createElement("article");
     row.className = "message message-assistant";
+    row.dataset.messageId = message.id;
     row.innerHTML = `
       <div class="assistant-block">
         <details class="assistant-thinking">
@@ -1389,6 +1531,11 @@
           <div class="assistant-thinking-content markdown-body"></div>
         </details>
         <div class="assistant-answer markdown-body"></div>
+        <div class="assistant-error"></div>
+        <div class="message-actions message-actions-assistant">
+          <span class="assistant-status-hint"></span>
+          <button class="message-action-button assistant-retry-button" type="button">重新处理</button>
+        </div>
       </div>`;
     conversationInner.appendChild(row);
 
@@ -1398,8 +1545,12 @@
       message,
       thinkingPanel: row.querySelector(".assistant-thinking"),
       thinkingContent: row.querySelector(".assistant-thinking-content"),
-      answerContent: row.querySelector(".assistant-answer")
+      answerContent: row.querySelector(".assistant-answer"),
+      errorContent: row.querySelector(".assistant-error"),
+      statusHint: row.querySelector(".assistant-status-hint"),
+      retryButton: row.querySelector(".assistant-retry-button")
     };
+    state.retryButton.addEventListener("click", () => requestAssistantReplay(sessionId, message.id));
     renderAssistantContent(state);
     if (shouldScroll) {
       scrollConversationToBottom(true);
@@ -1420,6 +1571,17 @@
     state.thinkingContent.innerHTML = hasThinking
       ? (renderer ? renderer.renderMarkdown(parsed.thinking) : escapeHtml(parsed.thinking))
       : "";
+
+    const errorMessage = state.message.errorMessage || "";
+    state.errorContent.classList.toggle("is-visible", Boolean(errorMessage));
+    state.errorContent.textContent = errorMessage;
+
+    const sessionStream = sessionStreams.get(state.sessionId);
+    const canRetry = state.message.status !== "streaming" && !(sessionStream && sessionStream.running);
+    state.retryButton.disabled = !canRetry;
+    state.retryButton.textContent = state.message.status === "error" ? "重发" : "重新处理";
+    state.statusHint.textContent = buildAssistantStatusHint(state.message);
+
     if (state.sessionId === activeSessionId) {
       scrollConversationToBottom();
     }
@@ -1619,6 +1781,22 @@
     return imageInput.files && imageInput.files.length ? imageInput.files[0] : null;
   }
 
+  function handleImageSelection() {
+    const file = getSelectedImageFile();
+    if (!file) {
+      resetAttachmentPreview();
+      updateSubmitState();
+      return;
+    }
+    if (file.size > maxImageBytes) {
+      clearSelectedImage();
+      setStatusForActiveSession(`图片过大，最大支持 ${maxImageSizeLabel}`);
+      return;
+    }
+    renderAttachmentPreview();
+    setStatusForActiveSession("已选择图片");
+  }
+
   function handleImagePaste(event) {
     const items = event.clipboardData && event.clipboardData.items;
     if (!items) {
@@ -1632,6 +1810,10 @@
     event.preventDefault();
     const extension = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
     const namedFile = new File([file], `clipboard-${Date.now()}.${extension}`, { type: file.type });
+    if (namedFile.size > maxImageBytes) {
+      setStatusForActiveSession(`图片过大，最大支持 ${maxImageSizeLabel}`);
+      return;
+    }
     const transfer = new DataTransfer();
     transfer.items.add(namedFile);
     imageInput.files = transfer.files;
@@ -1678,7 +1860,8 @@
         source: null,
         abortController: null,
         assistantState: null,
-        assistantMessageId: null
+        assistantMessageId: null,
+        failureMessage: ""
       };
       sessionStreams.set(sessionId, streamState);
     }
@@ -1708,9 +1891,7 @@
     if (!message) {
       return null;
     }
-    // 当前会话重新渲染后，最后一条 streaming 消息就是正在输出的消息。
-    const assistantRows = Array.from(conversationInner.querySelectorAll(".message-assistant"));
-    const row = assistantRows.at(-1);
+    const row = conversationInner.querySelector(`.message-assistant[data-message-id="${assistantMessageId}"]`);
     if (!row) {
       return null;
     }
@@ -1720,8 +1901,70 @@
       message,
       thinkingPanel: row.querySelector(".assistant-thinking"),
       thinkingContent: row.querySelector(".assistant-thinking-content"),
-      answerContent: row.querySelector(".assistant-answer")
+      answerContent: row.querySelector(".assistant-answer"),
+      errorContent: row.querySelector(".assistant-error"),
+      statusHint: row.querySelector(".assistant-status-hint"),
+      retryButton: row.querySelector(".assistant-retry-button")
     };
+  }
+
+  function buildReplayRequest(session, assistantMessageId) {
+    const assistantIndex = session.messages.findIndex(message => message.id === assistantMessageId && message.role === "assistant");
+    if (assistantIndex < 1) {
+      throw new Error("未找到可重新处理的回答");
+    }
+    return {
+      provider: session.provider,
+      messages: session.messages
+        .slice(0, assistantIndex)
+        .map(message => ({
+          role: message.role,
+          content: message.content || "",
+          image: message.role === "user" && message.image?.dataUrl
+            ? {
+                dataUrl: message.image.dataUrl,
+                name: message.image.name || "",
+                type: message.image.type || ""
+              }
+            : null
+        }))
+    };
+  }
+
+  function trimSessionAfterIndex(session, index) {
+    session.messages.splice(index + 1);
+  }
+
+  function buildAssistantStatusHint(message) {
+    if (message.status === "streaming") {
+      return "生成中...";
+    }
+    if (message.status === "error") {
+      return "回答失败，可重发";
+    }
+    if (message.status === "stopped") {
+      return "已停止，可重新处理";
+    }
+    if (message.retryCount) {
+      return `已重新处理 ${message.retryCount} 次`;
+    }
+    return "可重新处理这条回答";
+  }
+
+  async function extractResponseError(response) {
+    const fallbackMessage = `请求失败：${response.status}`;
+    try {
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const payload = await response.json();
+        return payload.message || fallbackMessage;
+      }
+      const text = (await response.text()).trim();
+      return text || fallbackMessage;
+    }
+    catch (error) {
+      return fallbackMessage;
+    }
   }
 
   function getSessionById(sessionId) {
@@ -1788,6 +2031,10 @@
         request.onsuccess = () => {
           const storedSessions = request.result || [];
           storedSessions.forEach(session => session.messages.forEach(message => {
+            if (message.role === "assistant") {
+              message.errorMessage = message.errorMessage || "";
+              message.retryCount = message.retryCount || 0;
+            }
             if (message.status === "streaming") {
               message.status = "stopped";
             }
