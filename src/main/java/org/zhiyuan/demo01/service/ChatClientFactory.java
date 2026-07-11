@@ -60,16 +60,16 @@ public class ChatClientFactory {
      * 当需要严格测试当前轮 Prompt 时，应选择不带记忆的客户端，避免历史消息干扰结果。
      *
      * @param providerCode provider 编码，例如 openai、ollama
-     * @param memoryEnabled 是否启用会话记忆
+     * @param serverMemoryEnabled 是否启用服务端会话记忆
      * @return 匹配到的 ChatClient
      */
-    public ChatClient getChatClient(String providerCode, boolean memoryEnabled) {
-        //启用内存，就调用带记忆的 ChatClient
-        if (memoryEnabled) {
+    public ChatClient getChatClient(String providerCode, boolean serverMemoryEnabled) {
+        //启用服务端会话记忆
+        if (serverMemoryEnabled) {
             return getChatClient(providerCode);
         }
 
-        //不启用内存记忆，就返回 ChatClientWithoutMemory
+        //不启用服务端会话记忆，就返回 ChatClientWithoutMemory
         AiProviderType providerType = AiProviderType.fromCode(providerCode);
         return switch (providerType) {
             case OPENAI -> openAiChatClientWithoutMemory;
