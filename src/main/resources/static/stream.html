@@ -452,39 +452,46 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      min-height: 24px;
+      min-height: 28px;
       color: var(--muted);
       font-size: 12px;
     }
 
-    .message-actions-user {
-      justify-content: flex-end;
-      padding-right: 6px;
-    }
-
     .message-actions-assistant {
       margin-top: 12px;
+      gap: 6px;
     }
 
     .message-action-button {
-      min-height: 24px;
-      padding: 0 10px;
-      border: 1px solid var(--border);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
       border-radius: 999px;
-      background: #ffffff;
-      color: #2e2e2e;
-      font-size: 12px;
-      transition: background 140ms ease, border-color 140ms ease;
+      background: transparent;
+      color: #646464;
+      transition: background 140ms ease, color 140ms ease;
     }
 
     .message-action-button:hover:not(:disabled) {
-      background: #f5f5f5;
-      border-color: #d5d5d5;
+      background: #f3f3f3;
+      color: #171717;
     }
 
     .message-action-button:disabled {
       color: #9a9a9a;
       cursor: default;
+    }
+
+    .message-action-button svg {
+      width: 17px;
+      height: 17px;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
     }
 
     .assistant-block {
@@ -1507,11 +1514,6 @@
     bubble.textContent = message.content;
     stack.appendChild(bubble);
 
-    const actions = document.createElement("div");
-    actions.className = "message-actions message-actions-user";
-    actions.innerHTML = `<span>${message.image ? "图片消息" : "已发送"}</span>`;
-    stack.appendChild(actions);
-
     row.appendChild(stack);
     conversationInner.appendChild(row);
     main.classList.remove("is-empty");
@@ -1533,8 +1535,12 @@
         <div class="assistant-answer markdown-body"></div>
         <div class="assistant-error"></div>
         <div class="message-actions message-actions-assistant">
-          <span class="assistant-status-hint"></span>
-          <button class="message-action-button assistant-retry-button" type="button">重新处理</button>
+          <button class="message-action-button assistant-copy-button" type="button" aria-label="复制回答" title="复制回答">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="10" height="10" rx="2"></rect><path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path></svg>
+          </button>
+          <button class="message-action-button assistant-retry-button" type="button" aria-label="重新回答" title="重新回答">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a8.5 8.5 0 0 1 14.5-6l1.5 1.5"></path><path d="M19 3.5V8h-4.5"></path><path d="M21 12a8.5 8.5 0 0 1-14.5 6L5 16.5"></path><path d="M5 20.5V16h4.5"></path></svg>
+          </button>
         </div>
       </div>`;
     conversationInner.appendChild(row);
@@ -1547,9 +1553,10 @@
       thinkingContent: row.querySelector(".assistant-thinking-content"),
       answerContent: row.querySelector(".assistant-answer"),
       errorContent: row.querySelector(".assistant-error"),
-      statusHint: row.querySelector(".assistant-status-hint"),
+      copyButton: row.querySelector(".assistant-copy-button"),
       retryButton: row.querySelector(".assistant-retry-button")
     };
+    state.copyButton.addEventListener("click", () => copyAssistantMessage(state));
     state.retryButton.addEventListener("click", () => requestAssistantReplay(sessionId, message.id));
     renderAssistantContent(state);
     if (shouldScroll) {
@@ -1577,10 +1584,12 @@
     state.errorContent.textContent = errorMessage;
 
     const sessionStream = sessionStreams.get(state.sessionId);
+    const canCopy = Boolean(parsed.answer.trim()) && state.message.status !== "streaming";
     const canRetry = state.message.status !== "streaming" && !(sessionStream && sessionStream.running);
+    state.copyButton.disabled = !canCopy;
     state.retryButton.disabled = !canRetry;
-    state.retryButton.textContent = state.message.status === "error" ? "重发" : "重新处理";
-    state.statusHint.textContent = buildAssistantStatusHint(state.message);
+    state.retryButton.title = state.message.status === "error" ? "重发" : "重新回答";
+    state.retryButton.setAttribute("aria-label", state.message.status === "error" ? "重发" : "重新回答");
 
     if (state.sessionId === activeSessionId) {
       scrollConversationToBottom();
@@ -1903,7 +1912,7 @@
       thinkingContent: row.querySelector(".assistant-thinking-content"),
       answerContent: row.querySelector(".assistant-answer"),
       errorContent: row.querySelector(".assistant-error"),
-      statusHint: row.querySelector(".assistant-status-hint"),
+      copyButton: row.querySelector(".assistant-copy-button"),
       retryButton: row.querySelector(".assistant-retry-button")
     };
   }
@@ -1935,20 +1944,43 @@
     session.messages.splice(index + 1);
   }
 
-  function buildAssistantStatusHint(message) {
-    if (message.status === "streaming") {
-      return "生成中...";
+  async function copyAssistantMessage(state) {
+    const content = state.message.content || "";
+    const parsed = renderer ? renderer.splitThinking(content) : { thinking: "", answer: content };
+    const text = parsed.answer.trim();
+    if (!text) {
+      return;
     }
-    if (message.status === "error") {
-      return "回答失败，可重发";
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      }
+      else {
+        copyTextWithFallback(text);
+      }
+      state.copyButton.title = "已复制";
+      state.copyButton.setAttribute("aria-label", "已复制");
+      window.setTimeout(() => {
+        state.copyButton.title = "复制回答";
+        state.copyButton.setAttribute("aria-label", "复制回答");
+      }, 1200);
     }
-    if (message.status === "stopped") {
-      return "已停止，可重新处理";
+    catch (error) {
+      setSessionStatus(state.sessionId, "复制失败");
     }
-    if (message.retryCount) {
-      return `已重新处理 ${message.retryCount} 次`;
-    }
-    return "可重新处理这条回答";
+  }
+
+  function copyTextWithFallback(text) {
+    const helper = document.createElement("textarea");
+    helper.value = text;
+    helper.setAttribute("readonly", "readonly");
+    helper.style.position = "absolute";
+    helper.style.left = "-9999px";
+    document.body.appendChild(helper);
+    helper.select();
+    document.execCommand("copy");
+    document.body.removeChild(helper);
   }
 
   async function extractResponseError(response) {
