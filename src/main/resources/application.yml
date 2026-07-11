@@ -26,6 +26,8 @@ spring:
         prefix: ai-vectorstore     #Redis 键的前缀
     mcp:
       client:
+        enabled: ${app.ai.mcp.enabled:true}
+        initialized: ${app.ai.mcp.initialize-on-startup:false}
         name: weather-client
         version: 1.0.0
         type: SYNC
@@ -50,6 +52,13 @@ server:
 
 app:
   ai:
+    mcp:
+      # 是否启用 MCP 客户端能力。
+      # false: 完全不装配 MCP 相关客户端与工具，项目可独立启动。
+      enabled: ${AI_MCP_ENABLED:true}
+      # 是否在 Spring Boot 启动阶段立即初始化 MCP 客户端。
+      # false: MCP 服务未启动时，应用仍可先启动；真正使用 MCP 工具时再连接。
+      initialize-on-startup: ${AI_MCP_INITIALIZE_ON_STARTUP:false}
     thinking:
       # false 表示隐藏思考过程，但模型仍可能在后端产生 thinking
       visible: ${AI_THINKING_VISIBLE:false}

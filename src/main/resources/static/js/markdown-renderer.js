@@ -44,7 +44,7 @@
     while (index < lines.length) {
       const line = lines[index];
 
-      if (/^\s*[*+-]\s*$/.test(line)) {
+      if (/^\s*[*+\-•·●▪◦]\s*$/.test(line)) {
         index += 1;
         continue;
       }
@@ -119,7 +119,7 @@
       if (isUnorderedListItem(line)) {
         const items = [];
         while (index < lines.length && isUnorderedListItem(lines[index])) {
-          items.push(lines[index].replace(/^\s*[-*+]\s+/, ""));
+          items.push(lines[index].replace(/^\s*[-*+•·●▪◦]\s+/, ""));
           index += 1;
         }
         const visibleItems = items.filter(item => item.trim() && item.trim() !== "-");
@@ -224,21 +224,56 @@
   }
 
   function isUnorderedListItem(line) {
-    return /^\s*[-*+]\s+\S/.test(line);
+    return /^\s*[-*+•·●▪◦]\s+\S/.test(line);
   }
 
   function normalizeMarkdown(markdown) {
-    return markdown
+    return sanitizeMarkdown(markdown)
       .replace(/^(#{1,6})(\S)/gm, "$1 $2")
-      .replace(/^(\s*[-*+])(\S)/gm, "$1 $2")
+      .replace(/^(\s*[-*+•·●▪◦])(\S)/gm, "$1 $2")
       .split("\n")
-      .map(line => {
-        if (!/^\s*[-*+]\s+\S/.test(line)) {
+      .map(rawLine => {
+        const line = normalizeSectionTitleLine(rawLine);
+        if (!/^\s*[-*+•·●▪◦]\s+\S/.test(line)) {
           return line;
         }
         return line.replace(/(\s)-(?=\S)/g, "$1\n- ");
       })
       .join("\n");
+  }
+
+  function sanitizeMarkdown(markdown) {
+    return String(markdown)
+      .replace(/\u00A0/g, " ")
+      .replace(/<0xA0>/gi, "")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\r/g, "");
+  }
+
+  function normalizeSectionTitleLine(line) {
+    if (/^\s*(?:[-*+•·●▪◦])\s*\*{1,2}\s*$/.test(line)) {
+      return "";
+    }
+
+    const matched = line.match(/^\s*(?:[-*+•·●▪◦])\s+(.{1,40}?)(?:[：:])?\s*\*{0,2}\s*$/);
+    if (!matched) {
+      return line;
+    }
+
+    const title = matched[1].trim();
+    if (!isStandaloneSectionTitle(title)) {
+      return line;
+    }
+
+    return `### ${title}`;
+  }
+
+  function isStandaloneSectionTitle(value) {
+    const text = value.trim();
+    if (!text || text.length > 40) {
+      return false;
+    }
+    return !/[，。；;,.!?？！]$/.test(text);
   }
 
   function normalizeInlineMarkdown(text) {

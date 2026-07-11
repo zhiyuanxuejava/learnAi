@@ -8,14 +8,12 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
-import org.springframework.stereotype.Component;
 
 /**
  * MCP ToolCallback 日志装饰器。
  * 这里不改变 MCP 工具原有的调用行为，
  * 只是在工具真正执行前后，把工具名、参数、耗时和返回结果打印到后台日志中。
  */
-@Component
 public class LoggingMcpToolCallbackProvider implements ToolCallbackProvider {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingMcpToolCallbackProvider.class);
@@ -25,6 +23,10 @@ public class LoggingMcpToolCallbackProvider implements ToolCallbackProvider {
      * 这里作为真正的委托对象，日志装饰器只负责包一层日志，不直接实现 MCP 调用细节。
      */
     private final SyncMcpToolCallbackProvider delegate;
+
+    public LoggingMcpToolCallbackProvider() {
+        this.delegate = null;
+    }
 
     public LoggingMcpToolCallbackProvider(SyncMcpToolCallbackProvider delegate) {
         this.delegate = delegate;
@@ -39,6 +41,10 @@ public class LoggingMcpToolCallbackProvider implements ToolCallbackProvider {
      */
     @Override
     public ToolCallback[] getToolCallbacks() {
+        if (delegate == null) {
+            return new ToolCallback[0];
+        }
+
         ToolCallback[] toolCallbacks = delegate.getToolCallbacks();
         ToolCallback[] loggingCallbacks = new ToolCallback[toolCallbacks.length];
 

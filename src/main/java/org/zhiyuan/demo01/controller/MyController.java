@@ -408,24 +408,46 @@ public class MyController {
     }
 
     /**
+     * 带记忆的会话 + 工具调用 + MCP
+     */
+    @GetMapping(value = "/ai/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<String>> getAnswerStream(@RequestParam("question") String question,
+                                                         @RequestParam(defaultValue = "ollama") String provider,
+                                                         @RequestParam(value = "convId", defaultValue = "1") String convId) {
+        return buildStreamResponse(question, provider, convId, null);
+    }
+
+    /**
      * 测试多模态能力：文字 + 上传图片 + Tool + MCP + Memory + SSE
      */
     @PostMapping(value = "/ai/stream",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.TEXT_EVENT_STREAM_VALUE
     )
-    public Flux<ServerSentEvent<String>> getAnswerStream(@RequestParam("question") String question,
-                                                         @RequestParam(defaultValue = "ollama") String provider,
-                                                         @RequestParam(value = "convId", defaultValue = "1") String convId,
-                                                         @RequestPart(value = "image", required = false) MultipartFile image) {
-        //创建ChatClient对象
+    public Flux<ServerSentEvent<String>> postAnswerStream(@RequestParam("question") String question,
+                                                          @RequestParam(defaultValue = "ollama") String provider,
+                                                          @RequestParam(value = "convId", defaultValue = "1") String convId,
+                                                          @RequestPart(value = "image", required = false) MultipartFile image) {
+        return buildStreamResponse(question, provider, convId, image);
+    }
+
+
+    /**
+     *  构建流式响应
+     * @param question
+     * @param provider
+     * @param convId
+     * @param image
+     * @return
+     */
+    private Flux<ServerSentEvent<String>> buildStreamResponse(String question,
+                                                              String provider,
+                                                              String convId,
+                                                              MultipartFile image) {
         ChatClient chatClient = chatClientFactory.getChatClient(provider);
-        //创建prompt对象，用于构建聊天请求
         ChatClient.ChatClientRequestSpec requestSpec = chatClient.prompt();
 
-       //动态构造 发给用户的信息
         if (image != null && !image.isEmpty()) {
-            //如果图片不为空，将图片结合问题添加到user中
             String contentType = image.getContentType();
             if (contentType == null || !contentType.startsWith("image/")) {
                 throw new IllegalArgumentException(
@@ -442,9 +464,9 @@ public class MyController {
         }
 
         return requestSpec
-                .tools(dateTimeTools) //添加本地时间工具
-                .tools(loggingMcpToolCallbackProvider)//添加带日志能力的 MCP 工具回调
-                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, convId)) //设置会话id，添加记忆功能
+                .tools(dateTimeTools)
+                .tools(loggingMcpToolCallbackProvider)
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, convId))
                 .stream()
                 .chatResponse()
                 .transform(this::toSseWithThinking);
