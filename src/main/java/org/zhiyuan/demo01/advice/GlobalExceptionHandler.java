@@ -2,11 +2,10 @@ package org.zhiyuan.demo01.advice;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.zhiyuan.demo01.dto.common.ApiErrorResponse;
 import org.zhiyuan.demo01.exception.BadRequestException;
 import org.zhiyuan.demo01.exception.ProcessingException;
@@ -62,6 +61,18 @@ public class GlobalExceptionHandler {
         log.warn("静态资源不存在: {}", ex.getResourcePath());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiErrorResponse("NOT_FOUND", "请求的资源不存在", Instant.now()));
+    }
+
+    /**
+     * 处理 SSE 客户端主动断开连接的情况。
+     * 流式输出时，用户点击停止、刷新页面或切换网络都可能导致浏览器关闭连接。
+     * 此时响应已经无法再写回客户端，因此只记录调试日志，不再尝试返回 JSON 错误体。
+     *
+     * @param ex 客户端连接不可用异常
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsable(AsyncRequestNotUsableException ex) {
+        log.debug("SSE 客户端已断开连接: {}", ex.getMessage());
     }
 
     /**

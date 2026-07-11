@@ -1,0 +1,1853 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Spring AI Chat</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --sidebar-width: 260px;
+      --sidebar-bg: #f9f9f9;
+      --main-bg: #ffffff;
+      --text: #0d0d0d;
+      --muted: #5d5d5d;
+      --faint: #8f8f8f;
+      --hover: #ececec;
+      --active: #e7e7e7;
+      --border: #e5e5e5;
+      --bubble: #f4f4f4;
+      --code-bg: #f4f4f4;
+      --composer-shadow: 0 9px 28px rgba(0, 0, 0, 0.08);
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      color: var(--text);
+      background: var(--main-bg);
+      font-size: 14px;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      color: inherit;
+      font: inherit;
+    }
+
+    button {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 2px solid #111111;
+      outline-offset: 2px;
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      height: 100dvh;
+    }
+
+    .sidebar {
+      position: relative;
+      z-index: 20;
+      display: grid;
+      grid-template-rows: auto auto auto minmax(0, 1fr);
+      height: 100dvh;
+      min-width: 0;
+      padding: 8px 8px 70px;
+      background: var(--sidebar-bg);
+      transition: width 180ms ease, transform 180ms ease;
+    }
+
+    .sidebar-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 42px;
+      padding: 0 6px 0 8px;
+    }
+
+    .brand {
+      overflow: hidden;
+      font-size: 15px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .brand span {
+      color: #6f6f6f;
+      font-weight: 400;
+    }
+
+    .icon-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      color: #383838;
+    }
+
+    .icon-button:hover {
+      background: var(--hover);
+    }
+
+    .primary-nav {
+      display: grid;
+      gap: 2px;
+      padding-top: 7px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 40px;
+      padding: 0 10px;
+      border-radius: 8px;
+      color: var(--text);
+      text-align: left;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .nav-item:hover,
+    .nav-item.is-active {
+      background: var(--hover);
+    }
+
+    .search-panel {
+      display: none;
+      padding: 7px 4px 4px;
+    }
+
+    .search-panel.is-open {
+      display: block;
+    }
+
+    .search-input {
+      width: 100%;
+      height: 36px;
+      padding: 0 11px;
+      border: 1px solid #d8d8d8;
+      border-radius: 8px;
+      outline: 0;
+      background: #ffffff;
+    }
+
+    .history {
+      min-height: 0;
+      margin-top: 12px;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #d7d7d7 transparent;
+    }
+
+    .history-title {
+      padding: 7px 10px 6px;
+      color: #303030;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .history-empty {
+      padding: 7px 10px;
+      color: var(--faint);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .session-item {
+      position: relative;
+      width: 100%;
+      min-height: 36px;
+      border-radius: 8px;
+    }
+
+    .session-item:hover,
+    .session-item.is-active {
+      background: var(--active);
+    }
+
+    .session-title {
+      display: block;
+      min-width: 0;
+      overflow: hidden;
+      font-size: 13px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .session-open {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      min-height: 36px;
+      padding: 0 35px 0 10px;
+      border-radius: 8px;
+      text-align: left;
+    }
+
+    .session-delete {
+      position: absolute;
+      right: 4px;
+      top: 4px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      color: #5f5f5f;
+    }
+
+    .session-item:hover .session-delete,
+    .session-item:focus-within .session-delete {
+      display: inline-flex;
+    }
+
+    .session-delete:hover {
+      background: #dcdcdc;
+      color: #111111;
+    }
+
+    .sidebar-profile {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      left: 8px;
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr) 32px;
+      align-items: center;
+      gap: 9px;
+      min-height: 54px;
+      padding: 7px 8px;
+      border-radius: 8px;
+      text-align: left;
+    }
+
+    .sidebar-profile:hover {
+      background: var(--hover);
+    }
+
+    .avatar {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      color: #ffffff;
+      background: #87936c;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .profile-copy {
+      display: grid;
+      min-width: 0;
+      gap: 2px;
+    }
+
+    .profile-name {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .profile-plan {
+      color: #737373;
+      font-size: 11px;
+    }
+
+    .profile-menu {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 7px;
+      color: #656565;
+    }
+
+    .sidebar-profile:hover .profile-menu {
+      background: #dfdfdf;
+      color: #252525;
+    }
+
+    .main {
+      position: relative;
+      display: grid;
+      grid-template-rows: 52px minmax(0, 1fr);
+      min-width: 0;
+      min-height: 0;
+      background: var(--main-bg);
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 14px 5px 18px;
+      background: rgba(255, 255, 255, 0.94);
+    }
+
+    .topbar-left,
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .mobile-menu {
+      display: none;
+    }
+
+    .provider-select {
+      height: 36px;
+      padding: 0 28px 0 10px;
+      border: 0;
+      border-radius: 8px;
+      outline: 0;
+      background: transparent;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .provider-select:hover {
+      background: #f5f5f5;
+    }
+
+    .topbar-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 36px;
+      padding: 0 10px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .topbar-button:hover {
+      background: #f2f2f2;
+    }
+
+    .chat-stage {
+      position: relative;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .conversation {
+      position: absolute;
+      inset: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+
+    .conversation-inner {
+      width: min(768px, calc(100% - 40px));
+      min-height: 100%;
+      margin: 0 auto;
+      padding: 32px 0 156px;
+    }
+
+    .main.is-empty .conversation-inner {
+      height: 100%;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+
+    .empty-state {
+      display: grid;
+      place-items: center;
+      height: 100%;
+      padding: 0 20px 150px;
+      text-align: center;
+    }
+
+    .empty-title {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 500;
+      letter-spacing: 0;
+    }
+
+    .message {
+      width: 100%;
+      margin-bottom: 32px;
+    }
+
+    .message-user {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .user-stack {
+      display: grid;
+      justify-items: end;
+      gap: 8px;
+      max-width: min(72%, 560px);
+    }
+
+    .user-image {
+      display: block;
+      max-width: min(100%, 440px);
+      max-height: 440px;
+      border-radius: 12px;
+      object-fit: contain;
+      background: #f1f1f1;
+    }
+
+    .user-bubble {
+      max-width: 100%;
+      padding: 10px 16px;
+      border-radius: 20px;
+      background: var(--bubble);
+      font-size: 15px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .assistant-block {
+      width: 100%;
+      font-size: 15px;
+      line-height: 1.75;
+    }
+
+    .assistant-thinking {
+      display: none;
+      margin: 0 0 18px;
+      border-left: 2px solid #dddddd;
+      padding-left: 14px;
+      color: #555555;
+    }
+
+    .assistant-thinking.has-content {
+      display: block;
+    }
+
+    .assistant-thinking summary {
+      margin-bottom: 8px;
+      color: #656565;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .assistant-answer.is-empty::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 18px;
+      border-radius: 2px;
+      background: #111111;
+      animation: blink 900ms steps(1) infinite;
+      vertical-align: text-bottom;
+    }
+
+    @keyframes blink {
+      50% {
+        opacity: 0.15;
+      }
+    }
+
+    .markdown-body h1,
+    .markdown-body h2,
+    .markdown-body h3,
+    .markdown-body h4,
+    .markdown-body h5,
+    .markdown-body h6 {
+      margin: 1.35em 0 0.55em;
+      color: #0d0d0d;
+      font-weight: 650;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    .markdown-body > :first-child {
+      margin-top: 0;
+    }
+
+    .markdown-body h1 {
+      font-size: 24px;
+    }
+
+    .markdown-body h2 {
+      font-size: 20px;
+    }
+
+    .markdown-body h3 {
+      font-size: 17px;
+    }
+
+    .markdown-body p {
+      margin: 0 0 1em;
+    }
+
+    .markdown-body strong {
+      font-weight: 650;
+    }
+
+    .markdown-body a {
+      color: #175cd3;
+      text-underline-offset: 2px;
+    }
+
+    .markdown-body ul,
+    .markdown-body ol {
+      margin: 0 0 1em;
+      padding-left: 1.6em;
+    }
+
+    .markdown-body li {
+      margin: 0.35em 0;
+      padding-left: 0.2em;
+    }
+
+    .markdown-body blockquote {
+      margin: 0 0 1em;
+      padding-left: 14px;
+      border-left: 3px solid #d4d4d4;
+      color: #4a4a4a;
+    }
+
+    .markdown-body code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #ececec;
+      font-family: Consolas, "Cascadia Code", monospace;
+      font-size: 0.9em;
+    }
+
+    .markdown-body pre {
+      margin: 0 0 1.1em;
+      padding: 16px;
+      overflow: auto;
+      border-radius: 8px;
+      background: var(--code-bg);
+      color: #151515;
+    }
+
+    .markdown-body pre code {
+      padding: 0;
+      background: transparent;
+    }
+
+    .markdown-body .table-scroll {
+      margin: 0 0 1.1em;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .markdown-body table {
+      width: 100%;
+      min-width: 560px;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .markdown-body th,
+    .markdown-body td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .markdown-body th {
+      background: #f7f7f7;
+      font-weight: 600;
+    }
+
+    .markdown-body tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .markdown-body .math-block {
+      margin: 0 0 1em;
+      padding: 12px 14px;
+      overflow-x: auto;
+      border-radius: 8px;
+      background: #f5f5f5;
+      font-family: Consolas, monospace;
+    }
+
+    .markdown-body .math-inline {
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: #f0f0f0;
+      font-family: Consolas, monospace;
+    }
+
+    .composer-wrap {
+      position: absolute;
+      z-index: 8;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      padding: 18px 20px 10px;
+      pointer-events: none;
+      transition: bottom 180ms ease, transform 180ms ease;
+    }
+
+    .main.is-empty .composer-wrap {
+      bottom: calc(50% - 98px);
+    }
+
+    .composer {
+      width: min(768px, 100%);
+      margin: 0 auto;
+      pointer-events: auto;
+    }
+
+    .attachment-preview {
+      display: none;
+      width: fit-content;
+      max-width: 100%;
+      margin: 0 0 8px 12px;
+      padding: 7px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07);
+    }
+
+    .attachment-preview.has-image {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .attachment-thumb {
+      width: 72px;
+      height: 72px;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+
+    .attachment-remove {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      color: #ffffff;
+      background: #202020;
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .composer-box {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 8px;
+      min-height: 56px;
+      padding: 9px 10px;
+      border: 1px solid #dedede;
+      border-radius: 28px;
+      background: #ffffff;
+      box-shadow: var(--composer-shadow);
+    }
+
+    .attach-button,
+    .send-button,
+    .stop-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+    }
+
+    .attach-button {
+      color: #2d2d2d;
+    }
+
+    .attach-button:hover,
+    .stop-button:hover {
+      background: #f1f1f1;
+    }
+
+    .composer-input {
+      width: 100%;
+      min-height: 24px;
+      max-height: 180px;
+      padding: 7px 3px;
+      border: 0;
+      outline: 0;
+      resize: none;
+      overflow-y: auto;
+      background: transparent;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .composer-input::placeholder {
+      color: #8b8b8b;
+    }
+
+    .composer-input:focus-visible {
+      outline: none;
+    }
+
+    .composer-box:focus-within {
+      border-color: #c9c9c9;
+    }
+
+    .composer-actions {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .status {
+      max-width: 86px;
+      overflow: hidden;
+      color: var(--faint);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .stop-button {
+      display: none;
+      color: #202020;
+    }
+
+    .stop-button.is-visible {
+      display: inline-flex;
+    }
+
+    .send-button {
+      color: #ffffff;
+      background: #0d0d0d;
+    }
+
+    .send-button:disabled {
+      color: #ffffff;
+      background: #d6d6d6;
+      cursor: default;
+    }
+
+    .composer-note {
+      margin-top: 6px;
+      color: #8c8c8c;
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .sidebar-backdrop {
+      display: none;
+    }
+
+    .app.sidebar-collapsed {
+      grid-template-columns: 0 minmax(0, 1fr);
+    }
+
+    .app.sidebar-collapsed .sidebar {
+      width: 0;
+      padding-right: 0;
+      padding-left: 0;
+      overflow: hidden;
+    }
+
+    .app.sidebar-collapsed .mobile-menu {
+      display: inline-flex;
+    }
+
+    @media (max-width: 800px) {
+      .app {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .sidebar {
+        position: fixed;
+        inset: 0 auto 0 0;
+        width: min(86vw, 300px);
+        transform: translateX(-100%);
+        box-shadow: 8px 0 28px rgba(0, 0, 0, 0.12);
+      }
+
+      .app.sidebar-open .sidebar {
+        transform: translateX(0);
+      }
+
+      .sidebar-backdrop {
+        position: fixed;
+        z-index: 15;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.25);
+      }
+
+      .app.sidebar-open .sidebar-backdrop {
+        display: block;
+      }
+
+      .mobile-menu {
+        display: inline-flex;
+      }
+
+      .topbar {
+        padding-right: 8px;
+        padding-left: 8px;
+      }
+
+      .conversation-inner {
+        width: calc(100% - 24px);
+        padding-top: 20px;
+      }
+
+      .user-stack {
+        max-width: 88%;
+      }
+
+      .composer-wrap {
+        padding-right: 8px;
+        padding-left: 8px;
+      }
+
+      .status,
+      .share-label {
+        display: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+<div id="app" class="app">
+  <aside id="sidebar" class="sidebar" aria-label="会话侧边栏">
+    <div class="sidebar-head">
+      <div class="brand">Spring AI <span>Lab</span></div>
+      <button id="collapseSidebarButton" class="icon-button" type="button" aria-label="收起侧边栏" title="收起侧边栏">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path></svg>
+      </button>
+    </div>
+
+    <nav class="primary-nav" aria-label="主要功能">
+      <button id="newChatButton" class="nav-item is-active" type="button">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"></path></svg>
+        <span>新聊天</span>
+      </button>
+      <button id="searchButton" class="nav-item" type="button" aria-expanded="false">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+        <span>搜索聊天</span>
+      </button>
+      <a class="nav-item" href="/rag-recall.html">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"></path></svg>
+        <span>RAG 测试</span>
+      </a>
+    </nav>
+
+    <div id="searchPanel" class="search-panel">
+      <input id="searchInput" class="search-input" type="search" placeholder="搜索会话" autocomplete="off" aria-label="搜索会话">
+    </div>
+
+    <section class="history" aria-label="最近会话">
+      <div class="history-title">最近</div>
+      <div id="sessionList"></div>
+    </section>
+
+    <button class="sidebar-profile" type="button">
+      <span class="avatar">W</span>
+      <span class="profile-copy">
+        <span class="profile-name">wj</span>
+        <span class="profile-plan">个人账户</span>
+      </span>
+      <span class="profile-menu" aria-hidden="true">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg>
+      </span>
+    </button>
+  </aside>
+
+  <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="关闭侧边栏"></button>
+
+  <main id="main" class="main is-empty">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="mobileMenuButton" class="icon-button mobile-menu" type="button" aria-label="打开侧边栏">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
+        </button>
+        <select id="provider" class="provider-select" aria-label="选择模型">
+          <option value="openai">OpenAI</option>
+          <option value="ollama" selected>Ollama</option>
+        </select>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-button" type="button" title="当前页面会话保存在本机浏览器">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
+          <span class="share-label">本机会话</span>
+        </button>
+        <button class="icon-button" type="button" aria-label="更多" title="更多">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="chat-stage">
+      <div id="conversation" class="conversation" aria-live="polite">
+        <div id="conversationInner" class="conversation-inner"></div>
+      </div>
+
+      <div class="composer-wrap">
+        <form id="questionForm" class="composer">
+          <input id="imageInput" type="file" accept="image/*" hidden>
+          <div id="attachmentPreview" class="attachment-preview" aria-label="待发送图片">
+            <img id="attachmentThumb" class="attachment-thumb" alt="待发送图片预览">
+            <button id="removeAttachmentButton" class="attachment-remove" type="button" aria-label="移除图片" title="移除图片">×</button>
+          </div>
+
+          <div class="composer-box">
+            <label class="attach-button" for="imageInput" aria-label="上传图片" title="上传图片">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+            </label>
+            <textarea id="question" class="composer-input" rows="1" placeholder="询问 Spring AI" aria-label="消息"></textarea>
+            <div class="composer-actions">
+              <span id="statusText" class="status">待发送</span>
+              <button id="stopButton" class="stop-button" type="button" aria-label="停止生成" title="停止生成">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"></rect></svg>
+              </button>
+              <button id="submitButton" class="send-button" type="submit" aria-label="发送消息" title="发送消息">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19V5M6 11l6-6 6 6"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="composer-note">AI 可能会犯错，请核查重要信息</div>
+        </form>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/js/markdown-renderer.js"></script>
+<script>
+  "use strict";
+
+  const renderer = window.MarkdownRenderSupport;
+  const app = document.querySelector("#app");
+  const main = document.querySelector("#main");
+  const form = document.querySelector("#questionForm");
+  const questionInput = document.querySelector("#question");
+  const providerSelect = document.querySelector("#provider");
+  const imageInput = document.querySelector("#imageInput");
+  const attachmentPreview = document.querySelector("#attachmentPreview");
+  const attachmentThumb = document.querySelector("#attachmentThumb");
+  const removeAttachmentButton = document.querySelector("#removeAttachmentButton");
+  const submitButton = document.querySelector("#submitButton");
+  const stopButton = document.querySelector("#stopButton");
+  const statusText = document.querySelector("#statusText");
+  const conversation = document.querySelector("#conversation");
+  const conversationInner = document.querySelector("#conversationInner");
+  const sessionList = document.querySelector("#sessionList");
+  const newChatButton = document.querySelector("#newChatButton");
+  const searchButton = document.querySelector("#searchButton");
+  const searchPanel = document.querySelector("#searchPanel");
+  const searchInput = document.querySelector("#searchInput");
+  const collapseSidebarButton = document.querySelector("#collapseSidebarButton");
+  const mobileMenuButton = document.querySelector("#mobileMenuButton");
+  const sidebarBackdrop = document.querySelector("#sidebarBackdrop");
+
+  const storageKeys = {
+    activeSessionId: "spring-ai-chat-active-session",
+    sidebarCollapsed: "spring-ai-chat-sidebar-collapsed"
+  };
+  const databaseName = "spring-ai-chat-workspace";
+  const sessionStoreName = "sessions";
+
+  let sessions = [];
+  let activeSessionId = null;
+  let pendingSessionId = createId();
+  let composerPreviewUrl = null;
+  let databasePromise = null;
+  // 每个会话独立保存流连接，切换会话只切换界面，不会取消其他会话的生成。
+  const sessionStreams = new Map();
+  const sessionPersistTimers = new Map();
+
+  initializePage();
+
+  async function initializePage() {
+    sessions = await loadSessions();
+    const savedSessionId = localStorage.getItem(storageKeys.activeSessionId);
+    activeSessionId = sessions.some(session => session.id === savedSessionId) ? savedSessionId : null;
+
+    if (localStorage.getItem(storageKeys.sidebarCollapsed) === "true" && window.innerWidth > 800) {
+      app.classList.add("sidebar-collapsed");
+    }
+
+    bindEvents();
+    renderSessionList();
+    renderActiveSession();
+    autoResizeTextarea();
+    updateSubmitState();
+    questionInput.focus();
+  }
+
+  function bindEvents() {
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      startStream();
+    });
+
+    questionInput.addEventListener("keydown", event => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+    questionInput.addEventListener("input", () => {
+      autoResizeTextarea();
+      updateSubmitState();
+    });
+
+    providerSelect.addEventListener("change", () => {
+      const session = getActiveSession();
+      if (!session) {
+        return;
+      }
+      session.provider = providerSelect.value;
+      session.updatedAt = Date.now();
+      persistSession(session);
+    });
+
+    imageInput.addEventListener("change", renderAttachmentPreview);
+    removeAttachmentButton.addEventListener("click", clearSelectedImage);
+    stopButton.addEventListener("click", () => stopSessionStream(activeSessionId));
+    newChatButton.addEventListener("click", startNewChat);
+    searchButton.addEventListener("click", toggleSearch);
+    searchInput.addEventListener("input", renderSessionList);
+    collapseSidebarButton.addEventListener("click", toggleSidebar);
+    mobileMenuButton.addEventListener("click", () => app.classList.add("sidebar-open"));
+    sidebarBackdrop.addEventListener("click", () => app.classList.remove("sidebar-open"));
+
+    document.addEventListener("paste", handleImagePaste);
+  }
+
+  async function startStream() {
+    const text = questionInput.value.trim();
+    const selectedFile = getSelectedImageFile();
+    if (!text && !selectedFile) {
+      questionInput.focus();
+      return;
+    }
+
+    const question = text || "请结合图片进行分析。";
+    const session = await ensureActiveSession(question);
+    const streamState = getOrCreateSessionStream(session.id);
+
+    // 同一个会话内仍然只允许一条生成任务，保证消息顺序和 ChatMemory 的上下文顺序稳定。
+    if (streamState.running) {
+      return;
+    }
+
+    setSessionRunning(session.id, true);
+    questionInput.value = "";
+    autoResizeTextarea();
+    clearSelectedImage();
+
+    // 截图转换为 dataUrl 是异步操作，先固定所属会话，避免用户切换页面后把消息写入新会话。
+    const image = selectedFile ? await buildImageSnapshot(selectedFile) : null;
+
+    const userMessage = {
+      id: createId(),
+      role: "user",
+      content: question,
+      image,
+      createdAt: Date.now()
+    };
+    session.messages.push(userMessage);
+    session.updatedAt = Date.now();
+    await persistSession(session);
+
+    if (session.id === activeSessionId) {
+      appendUserMessage(userMessage);
+    }
+    renderSessionList();
+
+    const assistantMessage = {
+      id: createId(),
+      role: "assistant",
+      content: "",
+      createdAt: Date.now(),
+      status: "streaming"
+    };
+    session.messages.push(assistantMessage);
+    const assistantState = session.id === activeSessionId
+      ? appendAssistantMessage(assistantMessage, session.id)
+      : null;
+    streamState.assistantState = assistantState;
+    streamState.assistantMessageId = assistantMessage.id;
+    await persistSession(session);
+    setSessionStatus(session.id, "生成中");
+
+    if (selectedFile) {
+      await startPostStream(question, selectedFile, session, assistantMessage.id);
+      return;
+    }
+    startGetStream(question, session, assistantMessage.id);
+  }
+
+  async function ensureActiveSession(firstQuestion) {
+    let session = getActiveSession();
+    if (session) {
+      return session;
+    }
+
+    session = {
+      id: pendingSessionId,
+      title: buildSessionTitle(firstQuestion),
+      provider: providerSelect.value,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: []
+    };
+    sessions.unshift(session);
+    activeSessionId = session.id;
+    pendingSessionId = createId();
+    localStorage.setItem(storageKeys.activeSessionId, activeSessionId);
+    conversationInner.innerHTML = "";
+    main.classList.remove("is-empty");
+    return session;
+  }
+
+  function startGetStream(question, session, assistantMessageId) {
+    const query = new URLSearchParams({
+      question,
+      provider: session.provider,
+      convId: session.id
+    });
+    const streamState = getOrCreateSessionStream(session.id);
+    const source = new EventSource(`/ai/stream?${query.toString()}`);
+    streamState.source = source;
+    source.onmessage = event => appendStreamText(session.id, assistantMessageId, event.data);
+    source.onerror = () => {
+      // EventSource 在本地关闭后也会触发 error，不应把用户主动停止误判为生成失败。
+      const currentStream = sessionStreams.get(session.id);
+      if (!currentStream || !currentStream.running || currentStream.assistantMessageId !== assistantMessageId) {
+        return;
+      }
+      const assistantState = getAssistantState(session.id, assistantMessageId);
+      const hasContent = Boolean(assistantState && assistantState.message.content.trim());
+      finishSessionStream(session.id, assistantMessageId, hasContent ? "complete" : "error", hasContent ? "已完成" : "连接失败");
+    };
+  }
+
+  async function startPostStream(question, file, session, assistantMessageId) {
+    const formData = new FormData();
+    formData.append("question", question);
+    formData.append("provider", session.provider);
+    formData.append("convId", session.id);
+    formData.append("image", file);
+    const streamState = getOrCreateSessionStream(session.id);
+    const abortController = new AbortController();
+    streamState.abortController = abortController;
+
+    try {
+      const response = await fetch("/ai/stream", {
+        method: "POST",
+        body: formData,
+        signal: abortController.signal
+      });
+      if (!response.ok || !response.body) {
+        throw new Error(`请求失败：${response.status}`);
+      }
+      await consumeSseStream(response.body, session.id, assistantMessageId);
+      finishSessionStream(session.id, assistantMessageId, "complete", "已完成");
+    }
+    catch (error) {
+      if (error.name === "AbortError") {
+        finishSessionStream(session.id, assistantMessageId, "stopped", "已停止");
+        return;
+      }
+      markAssistantFailed(session.id, assistantMessageId, error.message || "连接失败");
+    }
+  }
+
+  async function consumeSseStream(body, sessionId, assistantMessageId) {
+    const reader = body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+
+    while (true) {
+      const result = await reader.read();
+      if (result.done) {
+        flushSseBuffer(buffer, sessionId, assistantMessageId);
+        return;
+      }
+      buffer += decoder.decode(result.value, { stream: true });
+      const chunks = buffer.split(/\r?\n\r?\n/);
+      buffer = chunks.pop() || "";
+      chunks.forEach(chunk => appendSseChunk(chunk, sessionId, assistantMessageId));
+    }
+  }
+
+  function flushSseBuffer(buffer, sessionId, assistantMessageId) {
+    if (buffer.trim()) {
+      appendSseChunk(buffer, sessionId, assistantMessageId);
+    }
+  }
+
+  function appendSseChunk(chunk, sessionId, assistantMessageId) {
+    const data = chunk.split(/\r?\n/)
+      .filter(line => line.startsWith("data:"))
+      .map(line => line.slice(5).replace(/^\s/, ""));
+    if (data.length) {
+      appendStreamText(sessionId, assistantMessageId, data.join("\n"));
+    }
+  }
+
+  function appendStreamText(sessionId, assistantMessageId, rawContent) {
+    const assistantMessage = getAssistantMessage(sessionId, assistantMessageId);
+    if (!assistantMessage) {
+      return;
+    }
+    // 无论当前是否正在查看该会话，先把流式内容写入会话数据。
+    // 这样会话 A 在后台生成时，切换到会话 B 也不会丢失 A 的回答。
+    assistantMessage.content += decodeSseContent(rawContent);
+    const assistantState = getAssistantState(sessionId, assistantMessageId);
+    if (assistantState && sessionId === activeSessionId) {
+      renderAssistantContent(assistantState);
+    }
+    scheduleSessionPersist(sessionId);
+  }
+
+  function finishSessionStream(sessionId, assistantMessageId, status, statusText) {
+    const streamState = sessionStreams.get(sessionId);
+    const assistantState = getAssistantState(sessionId, assistantMessageId);
+    const assistantMessage = getAssistantMessage(sessionId, assistantMessageId);
+    if (assistantMessage) {
+      assistantMessage.status = status;
+    }
+    if (assistantState && sessionId === activeSessionId) {
+      renderAssistantContent(assistantState);
+    }
+    persistSession(getSessionById(sessionId));
+    closeSessionTransport(sessionId);
+    if (streamState && streamState.assistantMessageId === assistantMessageId) {
+      streamState.running = false;
+      streamState.assistantState = null;
+      streamState.assistantMessageId = null;
+    }
+    setSessionRunning(sessionId, false);
+    setSessionStatus(sessionId, statusText);
+  }
+
+  function markAssistantFailed(sessionId, assistantMessageId, message) {
+    const assistantMessage = getAssistantMessage(sessionId, assistantMessageId);
+    if (assistantMessage && !assistantMessage.content.trim()) {
+      assistantMessage.content = `> 请求失败\n\n${message}`;
+    }
+    finishSessionStream(sessionId, assistantMessageId, "error", "连接失败");
+  }
+
+  function stopSessionStream(sessionId) {
+    const streamState = sessionStreams.get(sessionId);
+    if (!streamState || !streamState.running) {
+      return;
+    }
+    const assistantMessageId = streamState.assistantMessageId;
+    closeSessionTransport(sessionId);
+    if (assistantMessageId) {
+      finishSessionStream(sessionId, assistantMessageId, "stopped", "已停止");
+    }
+  }
+
+  function closeSessionTransport(sessionId) {
+    const streamState = sessionStreams.get(sessionId);
+    if (!streamState) {
+      return;
+    }
+    if (streamState.source) {
+      streamState.source.close();
+      streamState.source = null;
+    }
+    if (streamState.abortController) {
+      streamState.abortController.abort();
+      streamState.abortController = null;
+    }
+  }
+
+  function renderActiveSession() {
+    conversationInner.innerHTML = "";
+    const session = getActiveSession();
+    const hasMessages = Boolean(session && session.messages.length);
+    main.classList.toggle("is-empty", !hasMessages);
+
+    if (!hasMessages) {
+      conversationInner.innerHTML = `<section class="empty-state"><h1 class="empty-title">今天想聊点什么？</h1></section>`;
+      providerSelect.disabled = false;
+      stopButton.classList.remove("is-visible");
+      setStatusForActiveSession("待发送");
+      updateSubmitState();
+      return;
+    }
+
+    providerSelect.value = session.provider || "ollama";
+    session.messages.forEach(message => {
+      if (message.role === "user") {
+        appendUserMessage(message, false);
+      }
+      else {
+        appendAssistantMessage(message, session.id, false);
+      }
+    });
+    const streamState = sessionStreams.get(session.id);
+    if (streamState && streamState.running) {
+      streamState.assistantState = getRenderedAssistantState(session.id, streamState.assistantMessageId);
+    }
+    setSessionControls(session.id);
+    requestAnimationFrame(() => scrollConversationToBottom(true));
+  }
+
+  function appendUserMessage(message, shouldScroll = true) {
+    const row = document.createElement("article");
+    row.className = "message message-user";
+    const stack = document.createElement("div");
+    stack.className = "user-stack";
+
+    if (message.image && message.image.dataUrl) {
+      const image = document.createElement("img");
+      image.className = "user-image";
+      image.src = message.image.dataUrl;
+      image.alt = message.image.name || "用户上传的图片";
+      stack.appendChild(image);
+    }
+
+    const bubble = document.createElement("div");
+    bubble.className = "user-bubble";
+    bubble.textContent = message.content;
+    stack.appendChild(bubble);
+    row.appendChild(stack);
+    conversationInner.appendChild(row);
+    main.classList.remove("is-empty");
+    if (shouldScroll) {
+      scrollConversationToBottom(true);
+    }
+  }
+
+  function appendAssistantMessage(message, sessionId, shouldScroll = true) {
+    const row = document.createElement("article");
+    row.className = "message message-assistant";
+    row.innerHTML = `
+      <div class="assistant-block">
+        <details class="assistant-thinking">
+          <summary>思考过程</summary>
+          <div class="assistant-thinking-content markdown-body"></div>
+        </details>
+        <div class="assistant-answer markdown-body"></div>
+      </div>`;
+    conversationInner.appendChild(row);
+
+    const state = {
+      row,
+      sessionId,
+      message,
+      thinkingPanel: row.querySelector(".assistant-thinking"),
+      thinkingContent: row.querySelector(".assistant-thinking-content"),
+      answerContent: row.querySelector(".assistant-answer")
+    };
+    renderAssistantContent(state);
+    if (shouldScroll) {
+      scrollConversationToBottom(true);
+    }
+    return state;
+  }
+
+  function renderAssistantContent(state) {
+    const content = state.message.content || "";
+    const parsed = renderer ? renderer.splitThinking(content) : { thinking: "", answer: content };
+    state.answerContent.innerHTML = renderer
+      ? renderer.renderMarkdown(parsed.answer)
+      : escapeHtml(parsed.answer).replaceAll("\n", "<br>");
+    state.answerContent.classList.toggle("is-empty", !parsed.answer.trim() && state.message.status === "streaming");
+
+    const hasThinking = Boolean(parsed.thinking.trim());
+    state.thinkingPanel.classList.toggle("has-content", hasThinking);
+    state.thinkingContent.innerHTML = hasThinking
+      ? (renderer ? renderer.renderMarkdown(parsed.thinking) : escapeHtml(parsed.thinking))
+      : "";
+    if (state.sessionId === activeSessionId) {
+      scrollConversationToBottom();
+    }
+  }
+
+  function startNewChat() {
+    activeSessionId = null;
+    pendingSessionId = createId();
+    localStorage.removeItem(storageKeys.activeSessionId);
+    providerSelect.disabled = false;
+    questionInput.value = "";
+    clearSelectedImage();
+    autoResizeTextarea();
+    renderSessionList();
+    renderActiveSession();
+    app.classList.remove("sidebar-open");
+    questionInput.focus();
+  }
+
+  function switchSession(sessionId) {
+    const session = getSessionById(sessionId);
+    if (!session) {
+      return;
+    }
+    activeSessionId = sessionId;
+    localStorage.setItem(storageKeys.activeSessionId, sessionId);
+    clearSelectedImage();
+    renderSessionList();
+    renderActiveSession();
+    app.classList.remove("sidebar-open");
+  }
+
+  async function deleteSession(sessionId) {
+    const session = getSessionById(sessionId);
+    if (!session || !window.confirm(`删除会话“${session.title}”？`)) {
+      return;
+    }
+    if (sessionStreams.get(sessionId)?.running) {
+      stopSessionStream(sessionId);
+    }
+    sessions = sessions.filter(item => item.id !== sessionId);
+    sessionStreams.delete(sessionId);
+    await removeSession(sessionId);
+    if (activeSessionId === sessionId) {
+      activeSessionId = null;
+      pendingSessionId = createId();
+      localStorage.removeItem(storageKeys.activeSessionId);
+      renderActiveSession();
+    }
+    renderSessionList();
+  }
+
+  function renderSessionList() {
+    newChatButton.classList.toggle("is-active", !activeSessionId);
+    const keyword = searchInput.value.trim().toLowerCase();
+    const visibleSessions = [...sessions]
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .filter(session => !keyword || session.title.toLowerCase().includes(keyword));
+    sessionList.innerHTML = "";
+
+    if (!visibleSessions.length) {
+      const empty = document.createElement("div");
+      empty.className = "history-empty";
+      empty.textContent = keyword ? "没有匹配的会话" : "发送第一条消息后，会话会显示在这里";
+      sessionList.appendChild(empty);
+      return;
+    }
+
+    visibleSessions.forEach(session => {
+      const item = document.createElement("div");
+      item.className = "session-item";
+      item.classList.toggle("is-active", session.id === activeSessionId);
+
+      const openButton = document.createElement("button");
+      openButton.className = "session-open";
+      openButton.type = "button";
+      openButton.title = session.title;
+
+      const title = document.createElement("span");
+      title.className = "session-title";
+      title.textContent = session.title;
+
+      const deleteButton = document.createElement("button");
+      deleteButton.className = "session-delete";
+      deleteButton.type = "button";
+      deleteButton.title = "删除会话";
+      deleteButton.setAttribute("aria-label", `删除会话 ${session.title}`);
+      deleteButton.innerHTML = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"></path></svg>`;
+      deleteButton.addEventListener("click", event => {
+        event.stopPropagation();
+        deleteSession(session.id);
+      });
+
+      openButton.appendChild(title);
+      openButton.addEventListener("click", () => switchSession(session.id));
+      item.append(openButton, deleteButton);
+      sessionList.appendChild(item);
+    });
+  }
+
+  function toggleSearch() {
+    const open = !searchPanel.classList.contains("is-open");
+    searchPanel.classList.toggle("is-open", open);
+    searchButton.setAttribute("aria-expanded", String(open));
+    if (open) {
+      searchInput.focus();
+    }
+    else {
+      searchInput.value = "";
+      renderSessionList();
+    }
+  }
+
+  function toggleSidebar() {
+    if (window.innerWidth <= 800) {
+      app.classList.remove("sidebar-open");
+      return;
+    }
+    const collapsed = app.classList.toggle("sidebar-collapsed");
+    localStorage.setItem(storageKeys.sidebarCollapsed, String(collapsed));
+  }
+
+  function updateSubmitState() {
+    const streamState = activeSessionId ? sessionStreams.get(activeSessionId) : null;
+    submitButton.disabled = Boolean(streamState && streamState.running)
+      || (!questionInput.value.trim() && !getSelectedImageFile());
+  }
+
+  function setSessionRunning(sessionId, running) {
+    const streamState = getOrCreateSessionStream(sessionId);
+    streamState.running = running;
+    if (sessionId === activeSessionId) {
+      setSessionControls(sessionId);
+    }
+  }
+
+  function setSessionControls(sessionId) {
+    const streamState = sessionId ? sessionStreams.get(sessionId) : null;
+    const running = Boolean(streamState && streamState.running);
+    providerSelect.disabled = running;
+    imageInput.disabled = running;
+    stopButton.classList.toggle("is-visible", running);
+    statusText.textContent = streamState?.status || "待发送";
+    updateSubmitState();
+  }
+
+  function setSessionStatus(sessionId, status) {
+    if (!sessionId) {
+      statusText.textContent = status;
+      return;
+    }
+    const streamState = getOrCreateSessionStream(sessionId);
+    streamState.status = status;
+    if (sessionId === activeSessionId) {
+      statusText.textContent = status;
+    }
+  }
+
+  function setStatusForActiveSession(status) {
+    setSessionStatus(activeSessionId, status);
+  }
+
+  function renderAttachmentPreview() {
+    const file = getSelectedImageFile();
+    if (!file) {
+      resetAttachmentPreview();
+      return;
+    }
+    revokeComposerPreviewUrl();
+    composerPreviewUrl = URL.createObjectURL(file);
+    attachmentThumb.src = composerPreviewUrl;
+    attachmentThumb.alt = file.name || "待发送图片";
+    attachmentPreview.classList.add("has-image");
+    updateSubmitState();
+  }
+
+  function clearSelectedImage() {
+    imageInput.value = "";
+    resetAttachmentPreview();
+    updateSubmitState();
+  }
+
+  function resetAttachmentPreview() {
+    revokeComposerPreviewUrl();
+    attachmentPreview.classList.remove("has-image");
+    attachmentThumb.removeAttribute("src");
+  }
+
+  function revokeComposerPreviewUrl() {
+    if (composerPreviewUrl) {
+      URL.revokeObjectURL(composerPreviewUrl);
+      composerPreviewUrl = null;
+    }
+  }
+
+  function getSelectedImageFile() {
+    return imageInput.files && imageInput.files.length ? imageInput.files[0] : null;
+  }
+
+  function handleImagePaste(event) {
+    const items = event.clipboardData && event.clipboardData.items;
+    if (!items) {
+      return;
+    }
+    const imageItem = Array.from(items).find(item => item.type.startsWith("image/"));
+    const file = imageItem && imageItem.getAsFile();
+    if (!file) {
+      return;
+    }
+    event.preventDefault();
+    const extension = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
+    const namedFile = new File([file], `clipboard-${Date.now()}.${extension}`, { type: file.type });
+    const transfer = new DataTransfer();
+    transfer.items.add(namedFile);
+    imageInput.files = transfer.files;
+    renderAttachmentPreview();
+    setStatusForActiveSession("已粘贴图片");
+  }
+
+  function buildImageSnapshot(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({
+        dataUrl: reader.result,
+        name: file.name,
+        type: file.type,
+        size: file.size
+      });
+      reader.onerror = () => reject(new Error("图片读取失败"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function autoResizeTextarea() {
+    questionInput.style.height = "auto";
+    questionInput.style.height = `${Math.min(questionInput.scrollHeight, 180)}px`;
+  }
+
+  function scrollConversationToBottom(force = false) {
+    const nearBottom = conversation.scrollTop + conversation.clientHeight >= conversation.scrollHeight - 120;
+    if (force || nearBottom) {
+      conversation.scrollTop = conversation.scrollHeight;
+    }
+  }
+
+  function getActiveSession() {
+    return activeSessionId ? getSessionById(activeSessionId) : null;
+  }
+
+  function getOrCreateSessionStream(sessionId) {
+    let streamState = sessionStreams.get(sessionId);
+    if (!streamState) {
+      streamState = {
+        running: false,
+        status: "待发送",
+        source: null,
+        abortController: null,
+        assistantState: null,
+        assistantMessageId: null
+      };
+      sessionStreams.set(sessionId, streamState);
+    }
+    return streamState;
+  }
+
+  function getAssistantState(sessionId, assistantMessageId) {
+    const streamState = sessionStreams.get(sessionId);
+    if (!streamState || streamState.assistantMessageId !== assistantMessageId) {
+      return null;
+    }
+
+    if (!streamState.assistantState && sessionId === activeSessionId) {
+      streamState.assistantState = getRenderedAssistantState(sessionId, assistantMessageId);
+    }
+    return streamState.assistantState;
+  }
+
+  function getAssistantMessage(sessionId, assistantMessageId) {
+    const session = getSessionById(sessionId);
+    return session?.messages.find(message => message.id === assistantMessageId) || null;
+  }
+
+  function getRenderedAssistantState(sessionId, assistantMessageId) {
+    const session = getSessionById(sessionId);
+    const message = session?.messages.find(item => item.id === assistantMessageId);
+    if (!message) {
+      return null;
+    }
+    // 当前会话重新渲染后，最后一条 streaming 消息就是正在输出的消息。
+    const assistantRows = Array.from(conversationInner.querySelectorAll(".message-assistant"));
+    const row = assistantRows.at(-1);
+    if (!row) {
+      return null;
+    }
+    return {
+      row,
+      sessionId,
+      message,
+      thinkingPanel: row.querySelector(".assistant-thinking"),
+      thinkingContent: row.querySelector(".assistant-thinking-content"),
+      answerContent: row.querySelector(".assistant-answer")
+    };
+  }
+
+  function getSessionById(sessionId) {
+    return sessions.find(session => session.id === sessionId) || null;
+  }
+
+  function buildSessionTitle(question) {
+    const normalized = question.replace(/\s+/g, " ").trim();
+    return normalized.length > 24 ? `${normalized.slice(0, 24)}…` : normalized;
+  }
+
+  function createId() {
+    return window.crypto && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function decodeSseContent(content) {
+    if (renderer) {
+      return renderer.decodeSseContent(content);
+    }
+    try {
+      return decodeURIComponent(content);
+    }
+    catch (error) {
+      return content;
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  // 会话正文（包含图片）使用 IndexedDB 保存，避免 localStorage 容量过小。
+  function openDatabase() {
+    if (databasePromise) {
+      return databasePromise;
+    }
+    databasePromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(databaseName, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(sessionStoreName)) {
+          request.result.createObjectStore(sessionStoreName, { keyPath: "id" });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return databasePromise;
+  }
+
+  async function loadSessions() {
+    try {
+      const database = await openDatabase();
+      return await new Promise((resolve, reject) => {
+        const request = database.transaction(sessionStoreName, "readonly")
+          .objectStore(sessionStoreName)
+          .getAll();
+        request.onsuccess = () => {
+          const storedSessions = request.result || [];
+          storedSessions.forEach(session => session.messages.forEach(message => {
+            if (message.status === "streaming") {
+              message.status = "stopped";
+            }
+          }));
+          resolve(storedSessions.sort((a, b) => b.updatedAt - a.updatedAt));
+        };
+        request.onerror = () => reject(request.error);
+      });
+    }
+    catch (error) {
+      console.error("读取本地会话失败", error);
+      return [];
+    }
+  }
+
+  async function persistSession(session) {
+    if (!session) {
+      return;
+    }
+    try {
+      const database = await openDatabase();
+      await new Promise((resolve, reject) => {
+        const request = database.transaction(sessionStoreName, "readwrite")
+          .objectStore(sessionStoreName)
+          .put(session);
+        request.onsuccess = resolve;
+        request.onerror = () => reject(request.error);
+      });
+    }
+    catch (error) {
+      console.error("保存本地会话失败", error);
+      setStatusForActiveSession("会话保存失败");
+    }
+  }
+
+  function scheduleSessionPersist(sessionId) {
+    window.clearTimeout(sessionPersistTimers.get(sessionId));
+    const timer = window.setTimeout(() => {
+      persistSession(getSessionById(sessionId));
+      sessionPersistTimers.delete(sessionId);
+    }, 250);
+    sessionPersistTimers.set(sessionId, timer);
+  }
+
+  async function removeSession(sessionId) {
+    try {
+      const database = await openDatabase();
+      await new Promise((resolve, reject) => {
+        const request = database.transaction(sessionStoreName, "readwrite")
+          .objectStore(sessionStoreName)
+          .delete(sessionId);
+        request.onsuccess = resolve;
+        request.onerror = () => reject(request.error);
+      });
+    }
+    catch (error) {
+      console.error("删除本地会话失败", error);
+      setStatusForActiveSession("删除失败");
+    }
+  }
+</script>
+</body>
+</html>

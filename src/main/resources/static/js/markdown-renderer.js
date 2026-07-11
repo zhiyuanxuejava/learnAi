@@ -68,10 +68,9 @@
         continue;
       }
 
-      const heading = line.match(/^(#{1,6})\s*(.+)$/);
+      const heading = matchHeading(line);
       if (heading) {
-        const level = heading[1].length;
-        blocks.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+        blocks.push(`<h${heading.level}>${renderInline(heading.content)}</h${heading.level}>`);
         index += 1;
         continue;
       }
@@ -143,7 +142,7 @@
       while (
         index < lines.length &&
         lines[index].trim() &&
-        !/^(#{1,6})\s*/.test(lines[index]) &&
+        !matchHeading(lines[index]) &&
         !/^```/.test(lines[index].trim()) &&
         !/^\s*(?:---+|\*\*\*+|___+)\s*$/.test(lines[index]) &&
         !isTableRow(lines[index]) &&
@@ -227,10 +226,27 @@
     return /^\s*[-*+•·●▪◦]\s+\S/.test(line);
   }
 
+  function matchHeading(line) {
+    const matched = line.match(/^ {0,3}(#{1,6})(?:[ \t]+|$)(.*)$/);
+    if (!matched) {
+      return null;
+    }
+
+    const content = matched[2].replace(/[ \t]+#+[ \t]*$/, "").trim();
+    if (!content) {
+      return null;
+    }
+
+    return {
+      level: matched[1].length,
+      content
+    };
+  }
+
   function normalizeMarkdown(markdown) {
     return sanitizeMarkdown(markdown)
-      .replace(/^(#{1,6})(\S)/gm, "$1 $2")
-      .replace(/^(\s*[-*+•·●▪◦])(\S)/gm, "$1 $2")
+      .replace(/^( {0,3}#{1,6})(?=[^\s#])/gm, "$1 ")
+      .replace(/^(\s*[-+•·●▪◦])(\S)/gm, "$1 $2")
       .split("\n")
       .map(rawLine => {
         const line = normalizeSectionTitleLine(rawLine);
